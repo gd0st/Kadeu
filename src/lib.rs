@@ -1,8 +1,17 @@
 use game::{Kadeu, Score};
 use model::{Card, CardBack};
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use serde_json;
 use std::fmt::Display;
+
+impl Display for Score {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Score::Hit => write!(f, "{}", "hit"),
+            Score::Miss => write!(f, "{}", "miss"),
+        }
+    }
+}
 
 impl<T> Kadeu for Card<T, CardBack>
 where
@@ -12,16 +21,16 @@ where
         self.front().to_string()
     }
 
-    fn eval(&self, input: &String) -> Score {
+    fn eval(&self, input: &String) -> Option<Score> {
         match self.back() {
             CardBack::Word(answer) => {
                 if answer == input {
-                    return Score::Hit;
+                    return Some(Score::Hit);
                 }
             }
         }
 
-        Score::Miss
+        Some(Score::Miss)
     }
 }
 
@@ -45,9 +54,10 @@ mod test {
     fn hit_score() {
         let card = Card::new("Hello".to_string(), CardBack::Word("World".to_string()));
         let input = "World".to_string();
-        let score = card.eval(&input);
-        let hit = if let Score::Hit = score { true } else { false };
-        assert!(hit)
+        if let Some(score) = card.eval(&input) {
+            let hit = if let Score::Hit = score { true } else { false };
+            assert!(hit)
+        };
     }
 }
 
@@ -98,29 +108,92 @@ pub mod model {
             }
         }
     }
+
+    impl From<String> for CardBack {
+        fn from(value: String) -> Self {
+            Self::Word(value)
+        }
+    }
 }
 pub mod sequences {
     use super::game::Sequence;
+    use rand::seq::SliceRandom;
+    use rand::thread_rng;
+    use std::vec;
 
-    impl<T> Iterator for Linear<T> {
-        type Item = T;
-        fn next(&mut self) -> Option<T> {
-            self.items.pop()
+    struct GenericSequence<T> {
+        items: Vec<T>,
+        sequence: vec::IntoIter<T>,
+    }
+
+    impl<T> GenericSequence<T> {
+        fn new(mut items: Vec<T>, strategy: fn(Vec<T>) -> Vec<T>) -> Linear<T> {
+            Linear::new(strategy(items))
         }
     }
+
+    impl<T> IntoIterator for GenericSequence<T> {
+        type Item = T;
+        type IntoIter = vec::IntoIter<T>;
+        fn into_iter(self) -> Self::IntoIter {
+            self.sequence
+        }
+    }
+
+    impl<T> IntoIterator for Linear<T> {
+        type Item = T;
+        type IntoIter = std::vec::IntoIter<T>;
+        fn into_iter(self) -> Self::IntoIter {
+            self.items.into_iter()
+        }
+    }
+
     pub struct Linear<T> {
         items: Vec<T>,
     }
     impl<T> Sequence<T> for Linear<T> {
         fn new(items: Vec<T>) -> Self {
-            Self { items }
+            let mut sequence = Self { items };
+            sequence.items.reverse();
+            sequence
+        }
+    }
+
+    pub struct Random<T> {
+        items: Vec<T>,
+    }
+
+    impl<T> IntoIterator for Random<T> {
+        type Item = T;
+        type IntoIter = std::vec::IntoIter<T>;
+        fn into_iter(self) -> Self::IntoIter {
+            self.items.into_iter()
+        }
+    }
+
+    impl<T> Sequence<T> for Random<T> {
+        fn new(items: Vec<T>) -> Self {
+            let mut sequence = Self { items };
+            sequence.items.shuffle(&mut thread_rng());
+            sequence
+        }
+    }
+    #[cfg(test)]
+    mod test {
+        use crate::model::Card;
+        use crate::model::CardBack;
+
+        #[test]
+        fn make_generic() {
+            let card = Card::new("Hello".to_string(), CardBack::Word("World".to_string()));
+            let ocard = Card::new("foobar".to_string(), CardBack::Word("bizzbazz".to_string()));
         }
     }
 }
 pub mod game {
     pub trait Kadeu {
         fn prompt(&self) -> String;
-        fn eval(&self, input: &String) -> Score;
+        fn eval(&self, input: &String) -> Option<Score>;
     }
     pub enum Score {
         Hit,
@@ -135,7 +208,7 @@ pub mod game {
             self.item.prompt()
         }
 
-        fn eval(&self, input: &String) -> Score {
+        fn eval(&self, input: &String) -> Option<Score> {
             self.item.eval(input)
         }
     }
@@ -160,7 +233,7 @@ pub mod game {
     }
     pub trait Sequence<T>
     where
-        Self: Iterator<Item = T>,
+        Self: IntoIterator,
     {
         fn new(items: Vec<T>) -> Self;
     }
