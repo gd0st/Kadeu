@@ -1,7 +1,13 @@
-use game::{Kadeu, Score};
+pub mod game;
+pub mod model;
+mod store;
+
+use crate::game::feeder::Feeder;
+use crate::game::{Kadeu, Score};
 use model::{Card, CardBack};
 use serde::{Deserialize, Deserializer};
 use serde_json;
+use std::collections::HashMap;
 use std::fmt::Display;
 
 impl<T> Kadeu for Card<T, CardBack>
@@ -25,13 +31,6 @@ where
     }
 }
 
-pub fn from_str<'de, T>(text: &'de str) -> serde_json::Result<T>
-where
-    T: Deserialize<'de>,
-{
-    serde_json::from_str(text)
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -51,167 +50,78 @@ mod test {
     }
 }
 
-pub mod model {
-    use serde::Deserialize;
-    use std::fmt::Display;
+pub mod feeds {
+    use crate::game::feeder::Feeder;
+    use crate::game::Kadeu;
+    use rand::seq::SliceRandom;
+    use rand::thread_rng;
+    use std::collections::HashMap;
 
-    #[derive(Deserialize, Clone, Copy)]
-    pub struct Card<T, U> {
-        front: T,
-        back: U,
-    }
-
-    impl<T, U> Card<T, U> {
-        pub fn new(front: T, back: U) -> Self {
-            Self { front, back }
-        }
-        pub fn front(&self) -> &T {
-            &self.front
-        }
-        pub fn back(&self) -> &U {
-            &self.back
-        }
-    }
-
-    #[derive(Deserialize, Clone)]
-    pub struct CardSet<T, U> {
-        title: String,
-        author: Option<String>,
-        cards: Vec<Card<T, U>>,
-    }
-
-    impl<T, U> CardSet<T, U> {
-        pub fn into_cards(self) -> Vec<Card<T, U>> {
-            self.cards
-        }
-    }
-    #[derive(Deserialize, Debug, Clone, PartialEq)]
-    #[serde(untagged)]
-    pub enum CardBack {
-        Word(String),
-    }
-
-    impl Display for CardBack {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match self {
-                Self::Word(answer) => write!(f, "{}", answer),
-            }
-        }
-    }
-}
-pub mod sequences {
-    use super::game::Sequence;
+    pub struct Linear<T>(Vec<T>);
 
     impl<T> Iterator for Linear<T> {
         type Item = T;
-        fn next(&mut self) -> Option<T> {
-            self.items.pop()
+        fn next(&mut self) -> Option<Self::Item> {
+            self.0.pop()
         }
     }
 
+    impl<T> Feeder<T> for Linear<T> {
+        fn new(items: Vec<T>) -> Self {
+            Self(items)
+        }
+    }
+
+    //TODO allow for seeding?
     pub struct Random<T> {
         items: Vec<T>,
     }
 
-    pub struct Linear<T> {
-        items: Vec<T>,
-    }
-    impl<T> Sequence<T> for Linear<T> {
+    impl<T> Feeder<T> for Random<T> {
         fn new(items: Vec<T>) -> Self {
             Self { items }
         }
     }
-}
-pub mod game {
-    pub trait Kadeu {
-        fn prompt(&self) -> String {
-            self.front()
-        }
-        fn front(&self) -> String;
-        fn eval(&self, input: &String) -> Score;
-    }
-    pub enum Score {
-        Hit,
-        Miss,
-    }
 
-    impl<T> Kadeu for Progress<T>
-    where
-        T: Kadeu,
-    {
-        fn front(&self) -> String {
-            self.item.prompt()
-        }
-
-        fn eval(&self, input: &String) -> Score {
-            self.item.eval(input)
+    impl<T> Iterator for Random<T> {
+        type Item = T;
+        fn next(&mut self) -> Option<Self::Item> {
+            let mut rng = thread_rng();
+            self.items.shuffle(&mut rng);
+            self.items.pop()
         }
     }
 
-    pub struct Progress<T> {
-        item: T,
-        score: Option<Score>,
-    }
+    #[cfg(test)]
+    mod test {
+        use super::{Linear, Random};
+        use crate::game::feeder::Feeder;
+        use crate::game::Kadeu;
+        use crate::model::Card;
 
-    impl<T> Progress<T> {
-        fn has_score(&self) -> bool {
-            self.score.is_some()
-        }
+        #[test]
+        fn build_and_use_linear() {
+            let cards = vec![Card::new("foo".to_string(), "bar".to_string())];
+            let feeder = Linear::new(cards);
 
-        fn score(&self) -> Option<&Score> {
-            if let Some(score) = &self.score {
-                Some(score)
-            } else {
-                None
+            for card in feeder {
+                assert_eq!(card.front(), &"foo".to_string());
             }
         }
-    }
-    pub trait Sequence<T>
-    where
-        Self: Iterator<Item = T>,
-    {
-        fn new(items: Vec<T>) -> Self;
-    }
-}
-
-pub mod store {
-    use crate::game::Kadeu;
-    use crate::game::Progress;
-    use crate::game::Score;
-    use std::collections::hash_map::DefaultHasher;
-    use std::collections::HashMap;
-    use std::hash::Hash;
-    use std::io::Result;
-
-    trait ProgressStore {
-        fn get_progress<T: Kadeu>(&self, card: &T) -> Progress<&T>;
-        fn save_progress<T: Kadeu>(&mut self, card: &T, score: Score) -> Result<()>;
-    }
-    struct FileStore {
-        root: String,
-        progress: HashMap<String, Score>,
-    }
-
-    impl FileStore {
-        fn new(root: String) -> Result<Self> {
-            Ok(Self {
-                root,
-                progress: HashMap::new(),
-            })
-        }
-    }
-
-    impl ProgressStore for FileStore {
-        fn save_progress<T: Kadeu>(&mut self, card: &T, score: Score) -> Result<()> {
-            let mut s = DefaultHasher::new();
-            let front = card.front();
-            front.hash(&mut s);
-            self.progress.insert(front, score);
-
-            Ok(())
-        }
-        fn get_progress<T: Kadeu>(&self, card: &T) -> Progress<&T> {
-            todo!()
+        #[test]
+        fn build_and_use_random() {
+            let cards = vec![
+                Card::new("foo".to_string(), "bar".to_string()),
+                Card::new("bizz".to_string(), "bazz".to_string()),
+            ];
+            let feeder = Random::new(cards);
+            for card in feeder {
+                match card.front().as_str() {
+                    "foo" => assert!(true),
+                    "bizz" => assert!(true),
+                    _ => assert!(false),
+                }
+            }
         }
     }
 }
