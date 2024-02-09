@@ -1,6 +1,7 @@
 pub mod feeds;
 pub mod game;
 pub mod model;
+pub mod strategy;
 //mod store;
 use crate::game::{Kadeu, Score};
 use game::feeder::Feeder;
