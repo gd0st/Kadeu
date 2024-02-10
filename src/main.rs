@@ -17,16 +17,25 @@ struct Config {
     feeder: String,
 }
 
-enum FeederSelector {
-    Linear,
-    Random,
+enum StrategySelect {
+    Linear(strategy::Linear),
+    Random(strategy::Random),
 }
 
-impl FeederSelector {
-    fn get(selector: String) -> Self {
-        match selector.as_str() {
-            "shuffle" => Self::Random,
-            _ => Self::Linear,
+impl StrategySelect {
+    fn get(key: String) -> Self {
+        match key.as_str() {
+            "shuffle" => Self::Random(strategy::Random),
+            _ => Self::Linear(strategy::Linear),
+        }
+    }
+}
+
+impl Strategy for StrategySelect {
+    fn select<T>(&self, items: &mut Vec<T>) -> Option<T> {
+        match self {
+            Self::Random(strat) => strat.select(items),
+            Self::Linear(strat) => strat.select(items),
         }
     }
 }
@@ -36,7 +45,7 @@ fn main() -> Result<()> {
     let text = fs::read_to_string(args.filepath)?;
     let set: CardSet<Card<String, CardBack>> = CardSet::try_from(text.as_str())?;
     let mut cards = set.cards();
-    let strategy = strategy::Random;
+    let strategy = StrategySelect::get(args.feeder);
     let mut input = String::new();
     while let Some(card) = strategy.select(&mut cards) {
         print!(">{}", card.front());
