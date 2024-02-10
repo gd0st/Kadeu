@@ -19,6 +19,15 @@ pub enum Score {
     Miss,
 }
 
+impl Score {
+    pub fn to_string(&self) -> String {
+        String::from(match self {
+            Self::Hit => "hit",
+            Self::Miss => "miss",
+        })
+    }
+}
+
 pub struct Progress<T> {
     item: T,
     score: Option<Score>,
