@@ -6,41 +6,29 @@ pub struct Card<T, U> {
     front: T,
     back: U,
 }
-
 impl<T, U> Card<T, U> {
     pub fn new(front: T, back: U) -> Self {
         Self { front, back }
     }
-    pub fn front(&self) -> &T {
-        &self.front
-    }
     pub fn back(&self) -> &U {
         &self.back
+    }
+
+    pub fn front(&self) -> &T {
+        &self.front
     }
 }
 
 #[derive(Deserialize, Clone)]
-pub struct CardSet<T, U> {
+pub struct CardSet<T> {
     title: String,
     author: Option<String>,
-    cards: Vec<Card<T, U>>,
+    cards: Vec<T>,
 }
 
-impl<T, U> CardSet<T, U> {
-    pub fn into_cards(self) -> Vec<Card<T, U>> {
-        self.cards
-    }
-}
-
-impl<'de, T, U> TryFrom<&'de str> for CardSet<T, U>
-where
-    T: Deserialize<'de>,
-    U: Deserialize<'de>,
-{
-    type Error = serde_json::Error;
-
-    fn try_from(value: &'de str) -> Result<Self, Self::Error> {
-        serde_json::from_str(value)
+impl<T> CardSet<T> {
+    pub fn cards(&self) -> Vec<&T> {
+        self.cards.iter().collect()
     }
 }
 
@@ -48,12 +36,14 @@ where
 #[serde(untagged)]
 pub enum CardBack {
     Word(String),
+    Number(usize),
 }
 
 impl Display for CardBack {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Word(answer) => write!(f, "{}", answer),
+            Self::Number(answer) => write!(f, "{}", answer),
         }
     }
 }

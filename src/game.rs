@@ -4,31 +4,19 @@ pub mod feeder {
         Self: Iterator<Item = T>,
     {
         fn new(items: Vec<T>) -> Self;
+        fn name(&self) -> String;
     }
 }
+
 pub trait Kadeu {
-    fn prompt(&self) -> String {
-        self.front()
-    }
-    fn front(&self) -> String;
-    fn eval(&self, input: &String) -> Score;
+    type Front;
+    type Back;
+    fn front(&self) -> &Self::Front;
+    fn back(&self) -> &Self::Back;
 }
 pub enum Score {
     Hit,
     Miss,
-}
-
-impl<T> Kadeu for Progress<T>
-where
-    T: Kadeu,
-{
-    fn front(&self) -> String {
-        self.item.prompt()
-    }
-
-    fn eval(&self, input: &String) -> Score {
-        self.item.eval(input)
-    }
 }
 
 pub struct Progress<T> {
@@ -48,10 +36,4 @@ impl<T> Progress<T> {
             None
         }
     }
-}
-pub trait Sequence<T>
-where
-    Self: Iterator<Item = T>,
-{
-    fn new(items: Vec<T>) -> Self;
 }
