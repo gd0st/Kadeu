@@ -1,6 +1,7 @@
 pub mod game;
 pub mod model;
 pub mod strategy;
+pub mod tui;
 //mod store;
 use crate::game::{Kadeu, Score};
 use game::feeder::Feeder;
@@ -10,7 +11,11 @@ use serde_json;
 use std::fmt::Display;
 use std::io;
 
-impl<T, U> Kadeu for Card<T, U> {
+impl<T, U> Kadeu for Card<T, U>
+where
+    T: Display,
+    U: Display,
+{
     type Front = T;
     type Back = U;
     fn front(&self) -> &Self::Front {
@@ -19,6 +24,12 @@ impl<T, U> Kadeu for Card<T, U> {
 
     fn back(&self) -> &Self::Back {
         self.back()
+    }
+    fn display_back(&self) -> String {
+        self.back().to_string()
+    }
+    fn display_front(&self) -> String {
+        self.front().to_string()
     }
 }
 

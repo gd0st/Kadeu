@@ -2,17 +2,17 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 
 pub trait Strategy {
-    fn select<T>(&self, items: &mut Vec<T>) -> Option<T> {
-        items.pop()
+    fn shuffle<T>(&self, cards: Vec<T>) -> Vec<T> {
+        cards
     }
 }
 
 pub struct Random;
 impl Strategy for Random {
-    fn select<T>(&self, items: &mut Vec<T>) -> Option<T> {
+    fn shuffle<T>(&self, mut cards: Vec<T>) -> Vec<T> {
         let mut rng = thread_rng();
-        items.shuffle(&mut rng);
-        items.pop()
+        cards.shuffle(&mut rng);
+        cards
     }
 }
 

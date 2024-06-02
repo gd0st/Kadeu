@@ -13,7 +13,10 @@ pub trait Kadeu {
     type Back;
     fn front(&self) -> &Self::Front;
     fn back(&self) -> &Self::Back;
+    fn display_front(&self) -> String;
+    fn display_back(&self) -> String;
 }
+
 pub enum Score {
     Hit,
     Miss,
