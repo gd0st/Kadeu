@@ -1,13 +1,4 @@
-pub mod feeder {
-    pub trait Feeder<T>
-    where
-        Self: Iterator<Item = T>,
-    {
-        fn new(items: Vec<T>) -> Self;
-        fn name(&self) -> String;
-    }
-}
-
+pub mod engine;
 pub trait Kadeu {
     type Front;
     type Back;

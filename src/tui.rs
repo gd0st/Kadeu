@@ -6,8 +6,8 @@ use std::path::Path;
 
 use crate::game::Kadeu;
 use crate::{
-    model,
-    model::{CardBack, CardSet},
+    app,
+    app::{CardBack, Deck},
     strategy::{self, Strategy},
 };
 
@@ -22,13 +22,13 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 pub struct App<T> {
-    deck: Option<CardSet<T>>,
+    deck: Option<Deck<T>>,
 }
 
-type Card = model::Card<String, CardBack>;
+type Card = app::Card<String, CardBack>;
 
 struct Game<T, V> {
-    cards: CardSet<T>,
+    cards: Deck<T>,
     strategy: V,
 }
 
@@ -45,12 +45,12 @@ where
     pub fn load<P: AsRef<Path>>(&mut self, filepath: P) -> io::Result<()> {
         let file = fs::OpenOptions::new().read(true).open(filepath)?;
         let reader = BufReader::new(file);
-        let deck: CardSet<T> = serde_json::from_reader(reader)?;
+        let deck: Deck<T> = serde_json::from_reader(reader)?;
         self.deck = Some(deck);
         Ok(())
     }
 
-    pub fn set_deck(&mut self, deck: CardSet<T>) {
+    pub fn set_deck(&mut self, deck: Deck<T>) {
         self.deck = Some(deck);
     }
 

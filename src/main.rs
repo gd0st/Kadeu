@@ -1,9 +1,9 @@
 use clap::Parser;
-use kadeu::model::{self, CardBack};
+use kadeu::app::{self, CardBack};
 use kadeu::tui::App;
 use std::io;
-type Card = model::Card<String, CardBack>;
-type Deck = model::CardSet<Card>;
+type Card = app::Card<String, CardBack>;
+type Deck = app::Deck<Card>;
 
 #[derive(Parser, Debug)]
 #[command(version, about)]
