@@ -23,24 +23,24 @@ mod io {
                 Self::Json => Self::write_json(deck, writer),
                 Self::Yaml => Self::write_yaml(deck, writer),
             };
-			res
+            res
         }
 
         fn write_json<T: Serialize>(deck: &Deck<T>, writer: impl Write) -> std::io::Result<()> {
-            let res = serde_json::to_writer(writer, deck)
+            let res = serde_json::to_writer(writer, deck);
             match res {
                 Err(e) => Err(std::io::Error::other(e)),
                 _ => Ok(()),
             }
         }
 
-		fn write_yaml<T: Serialize>(deck: &Deck<T>, writer: impl Write) -> std::io::Result<()> {
-            let res = serde_json::to_writer(writer, deck)
+        fn write_yaml<T: Serialize>(deck: &Deck<T>, writer: impl Write) -> std::io::Result<()> {
+            let res = serde_json::to_writer(writer, deck);
             match res {
                 Err(e) => Err(std::io::Error::other(e)),
                 _ => Ok(()),
             }
-		}
+        }
     }
 }
 
@@ -69,14 +69,10 @@ pub struct Deck<T> {
     cards: Vec<T>,
 }
 
-
 impl<T> Deck<T> {
     pub fn title(&self) -> &str {
         self.title.as_str()
     }
-}
-
-impl<T> Deck<T> {
     pub fn cards(&self) -> Vec<&T> {
         self.cards.iter().collect()
     }

@@ -4,11 +4,14 @@ use std::io::stdout;
 use std::io::BufReader;
 use std::path::Path;
 
-use crate::game::Kadeu;
+use crate::game::{
+    engine::{Engine, Strategy},
+    Kadeu,
+};
+use crate::strategies;
 use crate::{
     app,
     app::{CardBack, Deck},
-    strategy::{self, Strategy},
 };
 
 use crossterm::event::poll;
@@ -59,10 +62,11 @@ where
             panic!("No deck loaded!")
         };
 
-        let mut stack = deck.make_stack();
+        let cards = deck.cards();
         let backend = CrosstermBackend::new(stdout());
         let mut terminal = Terminal::new(backend)?;
-        let strategy = strategy::Linear;
+        let strategy = strategies::Random;
+        let mut engine = Engine::new(cards);
         enable_raw_mode()?;
         stdout().execute(EnterAlternateScreen)?;
         let mut _ui = Ui::new(deck.title());
@@ -91,7 +95,7 @@ where
             match action {
                 Action::Next => {
                     if output_buffer.is_empty() {
-                        if let Some(card) = stack.next(&strategy) {
+                        if let Some(card) = engine.next(&strategy) {
                             let answer = format!("A: {}", card.display_back());
                             let question = format!("Q: {}", card.display_front());
                             // Pop question first, then pop the answer
@@ -107,8 +111,7 @@ where
                     }
                 }
                 Action::Restart => {
-                    stack = deck.make_stack();
-                    _ui = Ui::new(deck.title());
+                    engine = Engine::new(deck.cards());
                 }
                 Action::Quit => break,
                 _ => continue,
