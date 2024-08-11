@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::io::stdout;
 use std::io::BufReader;
+use std::ops::Deref;
 use std::path::Path;
 
 use crate::game::{
@@ -24,11 +26,37 @@ use ratatui::{prelude::*, widgets::*};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
+mod views {
+    use ratatui::{
+        prelude::*,
+        widgets::{self, *},
+    };
+
+    trait Window {
+        fn widget(self) -> impl Widget;
+    }
+}
+
 pub struct App<T> {
     deck: Option<Deck<T>>,
 }
 
 type Card = app::Card<String, CardBack>;
+
+impl Card {
+    fn prompt(&self) -> Paragraph {
+        Paragraph::new(self.front().to_string())
+    }
+    fn answer(&self) -> Paragraph {
+        Paragraph::new(self.back().to_string())
+    }
+
+    fn default(&self) -> impl Widget {
+        let block = Block::new();
+        let list = List::new([self.front().to_string(), self.back().to_string()]).block(block);
+        list
+    }
+}
 
 struct Game<T, V> {
     cards: Deck<T>,
@@ -41,19 +69,16 @@ impl<T> App<T> {
     }
 }
 
-impl<T> App<T>
-where
-    T: DeserializeOwned + Kadeu,
-{
+impl App<Card> {
     pub fn load<P: AsRef<Path>>(&mut self, filepath: P) -> io::Result<()> {
         let file = fs::OpenOptions::new().read(true).open(filepath)?;
         let reader = BufReader::new(file);
-        let deck: Deck<T> = serde_json::from_reader(reader)?;
+        let deck: Deck<Card> = serde_json::from_reader(reader)?;
         self.deck = Some(deck);
         Ok(())
     }
 
-    pub fn set_deck(&mut self, deck: Deck<T>) {
+    pub fn set_deck(&mut self, deck: Deck<Card>) {
         self.deck = Some(deck);
     }
 
@@ -65,19 +90,25 @@ where
         let cards = deck.cards();
         let backend = CrosstermBackend::new(stdout());
         let mut terminal = Terminal::new(backend)?;
+
         let strategy = strategies::Random;
         let mut engine = Engine::new(cards);
+
+        let root = ui::Container::default();
+
         enable_raw_mode()?;
+
         stdout().execute(EnterAlternateScreen)?;
         let mut _ui = Ui::new(deck.title());
 
+        // todo! just make this a hashmap instead.
         let pairs = vec![
             ("Enter", Action::Next),
             ("y", Action::Restart),
             ("q", Action::Quit),
         ];
 
-        let mut output_buffer: Vec<String> = vec![];
+        let mut output_buffer: Vec<Box<dyn Widget>> = vec![];
         loop {
             let key = poll_keypress(50)?;
             let action = if let Some(press) = key {
@@ -99,15 +130,18 @@ where
                             let answer = format!("A: {}", card.display_back());
                             let question = format!("Q: {}", card.display_front());
                             // Pop question first, then pop the answer
-                            output_buffer.push(answer);
-                            output_buffer.push(question);
+                            output_buffer.push(Box::new(card.prompt()));
+                            output_buffer.push(Box::new(card.answer()));
                         } else {
                             // Push End game notif if emtpy
-                            output_buffer.push("No more card! Restart [Y/q]?".to_string())
+
+                            output_buffer.push(Box::new(Paragraph::new(
+                                "No more card! Restart [Y/q]?".to_string(),
+                            )))
                         }
                     }
-                    if let Some(message) = output_buffer.pop() {
-                        _ui.display(message)
+                    if let Some(widget) = output_buffer.pop() {
+                        terminal.draw(|frame| frame.render_widget(widget.deref(), frame.size()));
                     }
                 }
                 Action::Restart => {
@@ -173,6 +207,89 @@ fn get_action(press: KeyCode, pairs: Vec<(&str, Action)>) -> Option<Action> {
         }
     }
     None
+}
+
+mod ui {
+
+    use ratatui::{
+        backend::Backend,
+        layout::{Columns, Constraint, Direction, Layout},
+        prelude::CrosstermBackend,
+        widgets::{Widget, WidgetRef},
+        Terminal,
+    };
+    use std::io::Stdout;
+
+    pub struct Container<T> {
+        elements: Vec<Box<T>>,
+    }
+    impl<T> Default for Container<T> {
+        fn default() -> Self {
+            Self { elements: vec![] }
+        }
+    }
+    impl<T> Container<T> {
+        fn grid(direction: Direction, cols: u32) -> Layout {
+            let columns: Vec<Constraint> = (0..cols).map(|_| Constraint::Ratio(1, cols)).collect();
+            Layout::default().direction(direction).constraints(columns)
+        }
+
+        pub fn push(&mut self, widget: T) {
+            self.elements.push(Box::new(widget))
+        }
+    }
+
+    impl<T> WidgetRef for Container<T>
+    where
+        T: WidgetRef,
+    {
+        fn render_ref(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
+            let cols = self.elements.len() as u32;
+            let layout = Self::grid(Direction::Horizontal, cols).split(area);
+            for (i, child) in self.elements.iter().enumerate() {
+                child.render_ref(layout[i], buf)
+            }
+        }
+    }
+    struct Ui<B>
+    where
+        B: Backend,
+    {
+        terminal: Terminal<B>,
+    }
+
+    impl<B> Ui<B>
+    where
+        B: Backend,
+    {
+        pub fn render_container(&mut self, container: impl WidgetRef) {
+            self.terminal
+                .draw(|frame| container.render_ref(frame.size(), frame.buffer_mut()));
+        }
+    }
+    //todo this can be generic
+    impl TryFrom<CrosstermBackend<Stdout>> for Ui<CrosstermBackend<Stdout>> {
+        type Error = std::io::Error;
+
+        fn try_from(value: CrosstermBackend<Stdout>) -> std::io::Result<Self> {
+            let terminal = Terminal::new(value)?;
+            Ok(Self { terminal })
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::io::stdout;
+
+        use ratatui::prelude::CrosstermBackend;
+
+        use super::Ui;
+
+        #[test]
+        fn make_ui_crossterm() {
+            let ui = Ui::try_from(CrosstermBackend::new(stdout()));
+        }
+    }
 }
 
 struct Ui {
