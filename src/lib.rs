@@ -79,7 +79,6 @@ mod strategies {
 
         use super::*;
         use crate::game::engine::Engine;
-        use rand::seq::SliceRandom;
         use rand::{thread_rng, Rng};
 
         struct Linear;

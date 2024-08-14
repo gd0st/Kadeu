@@ -1,3 +1,4 @@
+use core::fmt;
 use ratatui::{
     backend::Backend,
     layout::{Columns, Constraint, Direction, Flex, Layout, Rect},
@@ -7,9 +8,41 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget, WidgetRef},
     Frame, Terminal,
 };
+use std::collections::VecDeque;
 
-struct CardSide {
-    text: String,
+pub type SlideShow<T> = VecDeque<Box<T>>;
+
+#[derive(Clone)]
+pub struct CardSide {
+    deck_title: Option<String>,
+    front: String,
+    back: String,
+    revealed: bool,
+}
+
+impl CardSide {
+    pub fn new(front: String, back: String) -> Self {
+        Self {
+            deck_title: None,
+            front: front,
+            back: back,
+            revealed: false,
+        }
+    }
+
+    pub fn with_title(mut self, title: &str) -> Self {
+        self.deck_title = Some(title.to_string());
+        self
+    }
+
+    pub fn reveal(mut self) -> Self {
+        self.revealed = true;
+        self
+    }
+
+    pub fn is_revealed(&self) -> bool {
+        self.revealed
+    }
 }
 
 impl Widget for CardSide {
@@ -17,7 +50,15 @@ impl Widget for CardSide {
     where
         Self: Sized,
     {
-        let text = Text::new(&self.text);
+        let content = if self.is_revealed() {
+            self.back
+        } else {
+            self.front
+        };
+        let mut text = Text::new(&content).bordered(&[]).centered();
+        if let Some(title) = self.deck_title.as_ref() {
+            text = text.with_border_title(title);
+        }
         text.render(area, buf)
     }
 }
@@ -117,9 +158,6 @@ fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
 }
 
 use std::io::Stdout;
-struct CardFront;
-
-struct CardBack;
 
 pub struct Container<T> {
     elements: Vec<Box<T>>,

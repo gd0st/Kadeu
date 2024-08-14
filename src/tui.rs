@@ -11,6 +11,8 @@ use crate::game::{
     Kadeu,
 };
 use crate::strategies;
+use crate::ui::CardSide;
+use crate::ui::SlideShow;
 use crate::{
     app,
     app::{CardBack, Deck},
@@ -90,11 +92,12 @@ impl App<Card> {
         let cards = deck.cards();
         let backend = CrosstermBackend::new(stdout());
         let mut terminal = Terminal::new(backend)?;
-
+        //let mut slideshow = SlideShow::new();
+        let mut current_card = CardSide::new("".to_string(), deck.title().to_string()).reveal();
         let strategy = strategies::Random;
         let mut engine = Engine::new(cards);
 
-        let root = ui::Container::default();
+        // let root = ui::Container::default();
 
         enable_raw_mode()?;
 
@@ -103,49 +106,53 @@ impl App<Card> {
 
         // todo! just make this a hashmap instead.
         let pairs = vec![
-            ("Enter", Action::Next),
-            ("y", Action::Restart),
-            ("q", Action::Quit),
+            ("Enter".to_string(), Action::Next),
+            ("y".to_string(), Action::Restart),
+            ("q".to_string(), Action::Quit),
         ];
 
-        let mut output_buffer: Vec<Box<dyn Widget>> = vec![];
+        let mut hashed_pairs = HashMap::new();
+
+        hashed_pairs.insert("y", Action::Restart);
+        hashed_pairs.insert("Y", Action::Restart);
+        hashed_pairs.insert("q", Action::Quit);
+        hashed_pairs.insert("Enter", Action::Next);
+
         loop {
-            let key = poll_keypress(50)?;
-            let action = if let Some(press) = key {
-                if let Some(action) = get_action(press, pairs.clone()) {
-                    action
-                } else {
-                    Action::Continue
-                }
+            let action = if let Some(key) = poll_keypress(50)? {
+                hashed_pairs
+                    .get(parse_press(key).as_str())
+                    .unwrap_or(&Action::Continue)
+                    .clone()
             } else {
                 Action::Continue
             };
 
-            draw(&mut terminal, &_ui)?;
+            terminal.draw(|f| {
+                f.render_widget(current_card.clone(), f.area());
+            })?;
 
             match action {
                 Action::Next => {
-                    if output_buffer.is_empty() {
-                        if let Some(card) = engine.next(&strategy) {
-                            let answer = format!("A: {}", card.display_back());
-                            let question = format!("Q: {}", card.display_front());
-                            // Pop question first, then pop the answer
-                            output_buffer.push(Box::new(card.prompt()));
-                            output_buffer.push(Box::new(card.answer()));
-                        } else {
-                            // Push End game notif if emtpy
-
-                            output_buffer.push(Box::new(Paragraph::new(
-                                "No more card! Restart [Y/q]?".to_string(),
-                            )))
+                    if let Some(card) = engine.next(&strategy) {
+                        if current_card.is_revealed() {
+                            current_card =
+                                CardSide::new(card.front().to_string(), card.back().to_string())
+                                    .with_title(deck.title());
+                            continue;
                         }
-                    }
-                    if let Some(widget) = output_buffer.pop() {
-                        terminal.draw(|frame| frame.render_widget(widget.deref(), frame.size()));
+
+                        current_card = current_card.reveal()
+                    } else {
+                        current_card =
+                            CardSide::new("".to_string(), "Replay or Quit? [Y/q]".to_string())
+                                .reveal()
+                                .with_title(deck.title());
                     }
                 }
                 Action::Restart => {
                     engine = Engine::new(deck.cards());
+                    current_card = CardSide::new("".to_string(), deck.title().to_string()).reveal();
                 }
                 Action::Quit => break,
                 _ => continue,
@@ -172,6 +179,7 @@ fn handle_events() -> io::Result<Action> {
                 match key.code {
                     KeyCode::Char('q') => return Ok(Action::Quit),
                     KeyCode::Enter => return Ok(Action::Next),
+                    KeyCode::Char('y') => return Ok(Action::Restart),
                     _ => {}
                 }
             }
@@ -192,6 +200,14 @@ fn poll_keypress(tick: u64) -> io::Result<Option<KeyCode>> {
     Ok(None)
 }
 
+fn parse_press(key: KeyCode) -> String {
+    match key {
+        KeyCode::Enter => "Enter".to_string(),
+        KeyCode::Char(c) => String::from(c),
+        _ => "".to_string(),
+    }
+}
+
 fn get_action(press: KeyCode, pairs: Vec<(&str, Action)>) -> Option<Action> {
     let press: Option<String> = match press {
         KeyCode::Enter => Some(String::from("Enter")),
@@ -209,7 +225,7 @@ fn get_action(press: KeyCode, pairs: Vec<(&str, Action)>) -> Option<Action> {
     None
 }
 
-mod ui {
+mod old_ui {
 
     use ratatui::{
         backend::Backend,
@@ -264,7 +280,7 @@ mod ui {
     {
         pub fn render_container(&mut self, container: impl WidgetRef) {
             self.terminal
-                .draw(|frame| container.render_ref(frame.size(), frame.buffer_mut()));
+                .draw(|frame| container.render_ref(frame.area(), frame.buffer_mut()));
         }
     }
     //todo this can be generic
