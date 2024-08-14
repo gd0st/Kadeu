@@ -1,6 +1,7 @@
 pub mod app;
 pub mod game;
 pub mod tui;
+mod ui;
 //pub mod tui;
 //mod store;
 use crate::game::{Kadeu, Score};
