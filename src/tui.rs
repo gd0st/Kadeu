@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::fs;
 use std::io;
 use std::io::stdout;
@@ -13,6 +15,7 @@ use crate::game::{
 use crate::strategies;
 use crate::ui::CardSide;
 use crate::ui::SlideShow;
+use crate::Pin;
 use crate::{
     app,
     app::{CardBack, Deck},
@@ -41,6 +44,7 @@ mod views {
 
 pub struct App<T> {
     deck: Option<Deck<T>>,
+    debugger: (Debugger<String>, bool),
 }
 
 type Card = app::Card<String, CardBack>;
@@ -67,7 +71,38 @@ struct Game<T, V> {
 
 impl<T> App<T> {
     pub fn new() -> Self {
-        Self { deck: None }
+        Self {
+            deck: None,
+            debugger: (Debugger::default(), false),
+        }
+    }
+
+    pub fn with_debugger(mut self) -> Self {
+        self.debugger.1 = true;
+        self
+    }
+}
+
+#[derive(Default)]
+struct Debugger<T>(T);
+
+impl<T> From<T> for Debugger<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> Debugger<T>
+where
+    T: std::fmt::Display,
+{
+    fn widget(&self) -> impl Widget {
+        let content = Text::from(self.0.to_string());
+        let widget = Paragraph::new(content).block(Block::bordered().borders(Borders::ALL));
+        widget
+    }
+    fn set_message(&mut self, message: T) {
+        self.0 = message
     }
 }
 
@@ -80,8 +115,17 @@ impl App<Card> {
         Ok(())
     }
 
+    fn debugger_layout(area: Rect) -> std::rc::Rc<[Rect]> {
+        let constraints = [Constraint::Ratio(9, 10), Constraint::Ratio(1, 10)];
+        Layout::vertical(constraints).split(area)
+    }
+
     pub fn set_deck(&mut self, deck: Deck<Card>) {
         self.deck = Some(deck);
+    }
+
+    pub fn dbg(&mut self, message: String) {
+        self.debugger.0.set_message(message);
     }
 
     pub fn run(&mut self) -> io::Result<()> {
@@ -89,11 +133,12 @@ impl App<Card> {
             panic!("No deck loaded!")
         };
 
-        let cards = deck.cards();
+        let cards = deck.cards().into_iter().collect();
         let backend = CrosstermBackend::new(stdout());
         let mut terminal = Terminal::new(backend)?;
         //let mut slideshow = SlideShow::new();
-        let mut current_card = CardSide::new("".to_string(), deck.title().to_string()).reveal();
+        let mut current_card = CardSide::new("".to_string(), deck.title().to_string());
+        current_card.reveal();
         let strategy = strategies::Random;
         let mut engine = Engine::new(cards);
 
@@ -129,30 +174,56 @@ impl App<Card> {
             };
 
             terminal.draw(|f| {
-                f.render_widget(current_card.clone(), f.area());
+                let mut area = f.area();
+
+                if self.debugger.1 {
+                    let areas = Self::debugger_layout(f.area());
+                    f.render_widget(self.debugger.0.widget(), areas[1]);
+                    area = areas[0];
+                }
+                f.render_widget(current_card.clone(), area);
             })?;
 
             match action {
                 Action::Next => {
+                    let cell = RefCell::new(current_card);
+                    if !cell.borrow().is_revealed() {
+                        cell.borrow_mut().reveal();
+                        current_card = cell.into_inner();
+                        continue;
+                        //&cell.borrow_mut().reveal();
+                    }
                     if let Some(card) = engine.next(&strategy) {
-                        if current_card.is_revealed() {
+                        // need to figure out how to look at the next card front and back
+                        // without losing reference to it.
+                        // Requires having some sort of state saving system that can
+                        // remember if the last card been revealed or not
+                        // inolves using the pin features somehow but now sure how yet.
+                        if cell.borrow().is_revealed() {
                             current_card =
                                 CardSide::new(card.front().to_string(), card.back().to_string())
                                     .with_title(deck.title());
+
+                            let debugger_message =
+                                format!("Pushing card {}", card.front().to_string());
+                            self.debugger.0.set_message(debugger_message);
                             continue;
                         }
 
-                        current_card = current_card.reveal()
+                        current_card = cell.into_inner();
+
+                        // current_card = current_card.reveal()
                     } else {
                         current_card =
                             CardSide::new("".to_string(), "Replay or Quit? [Y/q]".to_string())
-                                .reveal()
                                 .with_title(deck.title());
+                        current_card.reveal();
                     }
                 }
                 Action::Restart => {
                     engine = Engine::new(deck.cards());
-                    current_card = CardSide::new("".to_string(), deck.title().to_string()).reveal();
+                    current_card = CardSide::new("".to_string(), deck.title().to_string());
+                    current_card.reveal();
                 }
                 Action::Quit => break,
                 _ => continue,
@@ -223,6 +294,17 @@ fn get_action(press: KeyCode, pairs: Vec<(&str, Action)>) -> Option<Action> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod test {
+    use super::Debugger;
+
+    #[test]
+    fn build_debugger() {
+        let word = String::from("It's a bug's life!");
+        let debugger = Debugger::from(word.as_str());
+    }
 }
 
 mod old_ui {

@@ -1,3 +1,5 @@
+use crate::game::Kadeu;
+use crate::Pin;
 use core::fmt;
 use ratatui::{
     backend::Backend,
@@ -35,9 +37,8 @@ impl CardSide {
         self
     }
 
-    pub fn reveal(mut self) -> Self {
+    pub fn reveal(&mut self) {
         self.revealed = true;
-        self
     }
 
     pub fn is_revealed(&self) -> bool {
@@ -213,6 +214,27 @@ impl TryFrom<CrosstermBackend<Stdout>> for Ui<CrosstermBackend<Stdout>> {
     fn try_from(value: CrosstermBackend<Stdout>) -> std::io::Result<Self> {
         let terminal = Terminal::new(value)?;
         Ok(Self { terminal })
+    }
+}
+
+impl<T, U> Widget for Pin<T>
+where
+    T: Kadeu<Front = U, Back = U>,
+    U: fmt::Display,
+{
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        let content = if self.1 {
+            self.0.front()
+        } else {
+            self.0.back()
+        }
+        .to_string();
+        let text = text::Text::from(content);
+        let p = Paragraph::new(text);
+        p.render(area, buf)
     }
 }
 

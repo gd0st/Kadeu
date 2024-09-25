@@ -10,6 +10,8 @@ type Deck = app::Deck<Card>;
 struct Args {
     #[arg(short, long)]
     from: Option<String>,
+    #[arg(long)]
+    debug: bool,
 }
 #[derive(Debug, Clone)]
 enum Action {
@@ -39,5 +41,5 @@ fn main() -> io::Result<()> {
         app.set_deck(deck);
     }
 
-    app.run()
+    if args.debug { app.with_debugger() } else { app }.run()
 }

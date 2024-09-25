@@ -118,6 +118,36 @@ mod strategies {
     }
 }
 
+struct Pin<T>(T, bool);
+
+impl<T> From<T> for Pin<T> {
+    fn from(value: T) -> Self {
+        Pin(value, false)
+    }
+}
+
+impl<T> Pin<T> {
+    pub fn new(value: T) -> Self {
+        Self::from(value)
+    }
+
+    pub fn unpin(&mut self) {
+        self.1 = true;
+    }
+
+    pub fn pinned(&self) -> bool {
+        self.1
+    }
+
+    pub fn get_ref(&self) -> &T {
+        &self.0
+    }
+
+    pub fn get_ref_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
