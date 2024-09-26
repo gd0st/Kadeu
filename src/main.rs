@@ -8,38 +8,18 @@ type Deck = app::Deck<Card>;
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Args {
-    #[arg(short, long)]
-    from: Option<String>,
+    deck: String,
     #[arg(long)]
     debug: bool,
 }
-#[derive(Debug, Clone)]
-enum Action {
-    Quit,
-    Next,
-    Restart,
-    Continue,
-}
 
 fn main() -> io::Result<()> {
-    let deck_str = r#"
-{
-	"title": "Foobar Deck",
-	"cards": [
-		{ "front": "Foo", "back": "Bar" },
-		{ "front": "Bizz", "back": "bazz" }
-	]
-}
-	"#;
-
     let args = Args::parse();
-    let deck = Deck::try_from(deck_str)?;
     let mut app = App::new();
-    if let Some(filename) = args.from {
-        app.load(filename)?;
+    if let Ok(()) = app.load(&args.deck) {
     } else {
-        app.set_deck(deck);
-    }
-
+        eprintln!("Could not find a deck at {}", args.deck);
+        return Ok(());
+    };
     if args.debug { app.with_debugger() } else { app }.run()
 }
