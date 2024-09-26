@@ -1,3 +1,5 @@
+mod deck_browser;
+mod inputs;
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
     text,

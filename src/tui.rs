@@ -8,6 +8,7 @@ use std::io::BufReader;
 use std::path::Path;
 
 use crate::game::engine::Engine;
+use crate::game::Kadeu;
 use crate::strategies;
 use crate::ui::CardSide;
 use crate::{
@@ -67,12 +68,12 @@ where
 }
 
 impl App<Card> {
-    pub fn load<P: AsRef<Path>>(&mut self, filepath: P) -> io::Result<()> {
+    pub fn load<P: AsRef<Path>>(mut self, filepath: P) -> io::Result<Self> {
         let file = fs::OpenOptions::new().read(true).open(filepath)?;
         let reader = BufReader::new(file);
         let deck: Deck<Card> = serde_json::from_reader(reader)?;
         self.deck = Some(deck);
-        Ok(())
+        Ok(self)
     }
 
     fn debugger_layout(area: Rect) -> std::rc::Rc<[Rect]> {
