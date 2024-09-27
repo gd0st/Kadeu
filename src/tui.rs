@@ -8,7 +8,6 @@ use std::io::BufReader;
 use std::path::Path;
 
 use crate::game::engine::Engine;
-use crate::game::Kadeu;
 use crate::strategies;
 use crate::ui::CardSide;
 use crate::{

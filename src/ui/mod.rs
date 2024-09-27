@@ -1,10 +1,32 @@
-mod deck_browser;
-mod inputs;
+pub mod deck_browser;
+pub mod inputs;
+use std::path::PathBuf;
+
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
     text,
-    widgets::{Block, Widget, WidgetRef},
+    widgets::{self, Block, Paragraph, Widget, WidgetRef},
 };
+
+use deck_browser::DeckBrowser;
+
+use crate::app::Deck;
+
+pub enum Action {
+    Load(PathBuf),
+    Quit,
+    Continue,
+}
+
+trait Debugger {
+    fn text(&self) -> text::Text;
+}
+
+impl WidgetRef for dyn Debugger {
+    fn render_ref(&self, area: Rect, buf: &mut ratatui::prelude::Buffer) {
+        Paragraph::new(self.text()).render_ref(area, buf);
+    }
+}
 
 #[derive(Clone)]
 pub struct CardSide {
