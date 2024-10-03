@@ -8,7 +8,7 @@ use std::{default, env, io};
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Args {
-    deck: String,
+    deck: Option<PathBuf>,
     #[arg(long)]
     debug: bool,
 }
@@ -16,9 +16,9 @@ struct Args {
 fn fetch_root() -> String {
     if let Ok(var) = env::var("KADEU_HOME") {
         return var;
+    } else {
+        ".".to_string()
     }
-
-    "".to_string()
 }
 
 fn main() -> io::Result<()> {

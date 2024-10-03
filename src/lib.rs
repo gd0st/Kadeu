@@ -3,7 +3,7 @@ pub mod cli;
 pub mod game;
 pub mod io;
 pub mod tui;
-mod ui;
+pub mod ui;
 //pub mod tui;
 //mod store;
 use crate::game::Kadeu;
