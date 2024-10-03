@@ -1,5 +1,7 @@
 pub mod app;
+pub mod cli;
 pub mod game;
+pub mod io;
 pub mod tui;
 mod ui;
 //pub mod tui;
