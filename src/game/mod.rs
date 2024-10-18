@@ -1,11 +1,28 @@
+use std::fmt::Display;
+
 pub mod engine;
+pub mod flashcard;
 pub trait Kadeu {
     type Front;
     type Back;
     fn front(&self) -> &Self::Front;
     fn back(&self) -> &Self::Back;
-    fn display_front(&self) -> String;
-    fn display_back(&self) -> String;
+}
+
+impl<T, U> Kadeu for (T, U)
+where
+    T: Display,
+    U: Display,
+{
+    type Front = T;
+    type Back = U;
+    fn back(&self) -> &Self::Back {
+        &self.1
+    }
+
+    fn front(&self) -> &Self::Front {
+        &self.0
+    }
 }
 
 pub enum Score {
@@ -28,8 +45,8 @@ pub struct Progress<T> {
 }
 
 impl<T> Progress<T> {
-    fn has_score(&self) -> bool {
-        self.score.is_some()
+    pub fn set_score(&mut self, score: Score) {
+        self.score = Some(score)
     }
 
     fn score(&self) -> Option<&Score> {

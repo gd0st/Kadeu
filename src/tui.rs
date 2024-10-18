@@ -27,7 +27,7 @@ pub struct App<T> {
     debugger: (Debugger<String>, bool),
 }
 
-type Card = app::Card<String, CardBack>;
+pub type Card = app::Card<String, CardBack>;
 
 impl<T> App<T> {
     pub fn new() -> Self {

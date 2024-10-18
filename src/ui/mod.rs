@@ -2,20 +2,85 @@ pub mod deck_browser;
 pub mod inputs;
 use std::path::PathBuf;
 
+use crossterm::event::KeyCode;
+use deck_browser::DeckBrowser;
+use inputs::{Events, Input, KeyMap};
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
+    prelude::Backend,
     text,
-    widgets::{self, Block, Paragraph, Widget, WidgetRef},
+    widgets::{Block, Paragraph, Widget, WidgetRef},
+    Terminal,
 };
 
-use deck_browser::DeckBrowser;
+pub trait KadeuApp {
+    fn handle_input(&mut self, input: Option<&Input>) -> std::io::Result<Action>;
+    fn render<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> std::io::Result<()>;
+    // Allow for the app to cleanup anything before the end of it's lifecycle.
+    fn drop(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+    fn keymap(&self) -> KeyMap {
+        [(KeyCode::Char('q'), Input::Quit)].into()
+    }
+}
 
-use crate::app::Deck;
+pub struct AppHandler<B>
+where
+    B: Backend,
+{
+    terminal: Terminal<B>,
+    events: Events,
+    tick: u64,
+}
 
+impl<B> AppHandler<B>
+where
+    B: Backend,
+{
+    pub fn set_keymap(&mut self, keymap: KeyMap) {
+        self.events = Events::from(keymap)
+    }
+
+    pub fn run(&mut self, app: &mut impl KadeuApp) -> std::io::Result<Action> {
+        self.events = Events::from(app.keymap());
+        loop {
+            let input = self.events.poll(self.tick)?;
+
+            if let Some(Input::Quit) = input {
+                return Ok(Action::Quit);
+            }
+            let action = app.handle_input(input)?;
+
+            if let Action::None = action {
+                app.render(&mut self.terminal)?;
+            } else {
+                return Ok(action);
+            }
+        }
+    }
+}
+
+impl<B> From<Terminal<B>> for AppHandler<B>
+where
+    B: Backend,
+{
+    fn from(terminal: Terminal<B>) -> Self {
+        Self {
+            terminal,
+            events: Events::default(),
+            tick: 64,
+        }
+    }
+}
+
+// These are actually instructions, not actions lol
 pub enum Action {
+    Exit,
     Load(PathBuf),
     Quit,
     Continue,
+    None,
 }
 
 trait Debugger {
@@ -139,7 +204,7 @@ impl Text {
     }
 }
 
-fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
+pub fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
     let [area] = Layout::horizontal([horizontal])
         .flex(Flex::Center)
         .areas(area);

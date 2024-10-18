@@ -1,3 +1,4 @@
+use crate::game::Kadeu;
 use crate::ui::inputs::Input;
 use crossterm::event::KeyCode;
 use ratatui::prelude::{Backend, CrosstermBackend};
@@ -11,7 +12,7 @@ use std::io::Stdout;
 use std::path::{Path, PathBuf};
 
 use super::inputs::{EventListener, Events, KeyMap};
-use super::{Action, Debugger};
+use super::{Action, Debugger, KadeuApp};
 
 pub struct DeckBrowser {
     parent: PathBuf,
@@ -45,35 +46,48 @@ impl Debugger for DeckBrowser {
     }
 }
 
-pub trait KadeuApp<B>
-where
-    B: Backend,
-{
-    fn render(&mut self, terminal: &mut Terminal<B>, events: &Events) -> std::io::Result<Action>;
-}
-
-impl<B> KadeuApp<B> for DeckBrowser
-where
-    B: Backend,
-{
-    fn render(&mut self, terminal: &mut Terminal<B>, events: &Events) -> std::io::Result<Action> {
-        // TODO allow style sheets to be passed in.
-        let mut keymap = KeyMap::new();
-        keymap.insert(KeyCode::Char('q'), Input::Quit);
-        keymap.insert(KeyCode::Char('j'), Input::Down);
-        keymap.insert(KeyCode::Char('k'), Input::Up);
-        keymap.insert(KeyCode::Backspace, Input::Escape);
-        keymap.insert(KeyCode::Enter, Input::Select);
-        // TODO allow the tick rate to be adjusted
-
-        let action = if let Some(input) = events.poll(64)? {
-            match input {
-                Input::Quit => Action::Quit,
-                anything => self.input(anything)?,
-            }
-        } else {
-            Action::Continue
+impl KadeuApp for DeckBrowser {
+    fn handle_input(&mut self, input: Option<&Input>) -> std::io::Result<Action> {
+        let Some(input) = input else {
+            return Ok(Action::None);
         };
+        let action = match input {
+            Input::Up => {
+                if self.index > 0 {
+                    self.index -= 1;
+                }
+                Action::None
+            }
+
+            Input::Down => {
+                if self.index < self.view().unwrap().len() - 1 {
+                    self.index += 1;
+                }
+                Action::None
+            }
+
+            Input::Escape => {
+                if self.root == self.parent {
+                } else {
+                    if let Some(parent) = self.root.parent() {
+                        self.root = PathBuf::from(parent)
+                    }
+                }
+                Action::Quit
+            }
+            Input::Select => {
+                if self.current_path_is_file() {
+                    Action::Exit
+                } else {
+                    self.traverse()?;
+                    Action::None
+                }
+            }
+            _ => Action::Continue,
+        };
+        Ok(action)
+    }
+    fn render<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> std::io::Result<()> {
         let view = self.view()?;
 
         let items = view.into_iter().map(|item| Text::from(item).white());
@@ -88,14 +102,58 @@ where
         terminal.draw(|frame| {
             frame.render_stateful_widget(list, frame.area(), &mut state);
         })?;
-        Ok(action)
+        Ok(())
+    }
+
+    fn keymap(&self) -> KeyMap {
+        let mut map = KeyMap::new();
+        map.insert(KeyCode::Char('q'), Input::Quit);
+        map.insert(KeyCode::Char('j'), Input::Down);
+        map.insert(KeyCode::Char('k'), Input::Up);
+        map.insert(KeyCode::Enter, Input::Select);
+        map.insert(KeyCode::Backspace, Input::Escape);
+        map
+    }
+
+    fn drop(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 
 impl DeckBrowser {
-    pub fn run(termina: &mut Terminal<CrosstermBackend<Stdout>>) {}
+    pub fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) {}
     pub fn index(&self) -> usize {
         self.index
+    }
+
+    pub fn current_path_is_file(&self) -> bool {
+        let Ok(paths) = self.paths() else {
+            return false;
+        };
+
+        if paths.len() < 1 {
+            return false;
+        }
+        let Some(path) = paths.get(self.index) else {
+            panic!("the index is out of range")
+        };
+
+        !path.is_dir()
+    }
+
+    pub fn current_path(&self) -> Option<PathBuf> {
+        let Ok(paths) = self.paths() else {
+            return None;
+        };
+
+        if paths.len() < 1 {
+            return None;
+        }
+        let Some(path) = paths.get(self.index) else {
+            panic!("the index is out of range")
+        };
+
+        Some(path.to_owned())
     }
 
     pub fn paths(&self) -> std::io::Result<Vec<PathBuf>> {
@@ -139,51 +197,18 @@ impl DeckBrowser {
 
     /// Will change it's state to browse the child folder
     /// if the self.index is discovered to be on a path
-    /// otherwise if it's a file it will send an Action back with the PathBuf of the selection
-    /// Or it will signal to do nothing.
-    pub fn traverse(&mut self) -> std::io::Result<Action> {
+    /// otherwise nothing happens
+    pub fn traverse(&mut self) -> std::io::Result<()> {
+        // TODO Fix this to not return an Action...
+        // Actions will be done by handle_input instead. Bad code right now
         // still kinda a messy function
         if let Some(path) = self.paths()?.into_iter().nth(self.index) {
             if path.is_dir() {
                 self.root = path.clone();
                 self.index = 0;
-                return Ok(Action::Continue);
-            } else if path.is_file() {
-                return Ok(Action::Load(path));
             }
         }
-        Ok(Action::Continue)
-    }
-
-    pub fn input(&mut self, input: &Input) -> std::io::Result<Action> {
-        let action = match input {
-            Input::Up => {
-                if self.index > 0 {
-                    self.index -= 1;
-                }
-                Action::Continue
-            }
-
-            Input::Down => {
-                if self.index < self.view().unwrap().len() - 1 {
-                    self.index += 1;
-                }
-                Action::Continue
-            }
-
-            Input::Escape => {
-                if self.root == self.parent {
-                } else {
-                    if let Some(parent) = self.root.parent() {
-                        self.root = PathBuf::from(parent)
-                    }
-                }
-                Action::Continue
-            }
-            Input::Select => self.traverse()?,
-            _ => Action::Continue,
-        };
-        Ok(action)
+        Ok(())
     }
 }
 

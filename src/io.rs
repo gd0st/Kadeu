@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{app::Deck, cli::Config, tui::Card};
+use crate::{app::Deck, cli::Config};
 
 #[derive(Debug, Clone)]
 pub enum ImportEntry {

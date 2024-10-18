@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
+use std::{collections::VecDeque, fmt::Display};
 
 //use crate::strategy::{self, Strategy};
 
@@ -76,9 +76,13 @@ impl<T> Deck<T> {
     pub fn cards(&self) -> Vec<&T> {
         self.cards.iter().collect()
     }
+
+    pub fn into_cards(self) -> Vec<T> {
+        self.cards
+    }
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum CardBack {
     Word(String),

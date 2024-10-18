@@ -5,6 +5,8 @@ use toml;
 use clap::{self, Arg, Parser};
 use serde::{Deserialize, Serialize};
 
+use crate::ui::KadeuApp;
+
 #[cfg(target_os = "linux")]
 const HOME_VAR: &str = "HOME";
 #[cfg(target_os = "linux")]
@@ -45,7 +47,7 @@ pub struct Args {
     #[arg(long, short)]
     config: Option<PathBuf>,
     #[command(subcommand)]
-    pub subcommand: Subcommand,
+    pub subcommand: Option<Subcommand>,
 }
 
 impl Args {

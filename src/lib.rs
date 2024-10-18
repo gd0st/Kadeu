@@ -2,17 +2,20 @@ pub mod app;
 pub mod cli;
 pub mod game;
 pub mod io;
-pub mod tui;
+// pub mod tui;
 pub mod ui;
 //pub mod tui;
 //mod store;
 use crate::game::Kadeu;
 use app::{Card, Deck};
 use game::engine::Strategy;
+use game::flashcard::{self};
 use serde::Deserialize;
 use serde_json;
 
 use std::fmt::Display;
+
+pub type Flashcard = flashcard::Flashcard<String, String>;
 
 impl<T, U> Kadeu for Card<T, U>
 where
@@ -21,18 +24,12 @@ where
 {
     type Front = T;
     type Back = U;
-    fn front(&self) -> &Self::Front {
+    fn front(&self) -> &T {
         self.front()
     }
 
-    fn back(&self) -> &Self::Back {
+    fn back(&self) -> &U {
         self.back()
-    }
-    fn display_back(&self) -> String {
-        self.back().to_string()
-    }
-    fn display_front(&self) -> String {
-        self.front().to_string()
     }
 }
 
@@ -59,62 +56,25 @@ where
 }
 
 mod strategies {
-    use crate::Strategy;
+    use crate::{game::Kadeu, Strategy};
     use rand::{thread_rng, Rng};
+
+    type strat<T: Kadeu> = fn(&[T]) -> T;
     pub struct Linear;
     impl<T> Strategy<T> for Linear {
-        fn next(items: &mut Vec<T>) -> T {
-            items.remove(0)
+        fn next(items: &mut Vec<T>) -> Option<T> {
+            items.pop()
         }
     }
 
     pub struct Random;
     impl<T> Strategy<T> for Random {
-        fn next(items: &mut Vec<T>) -> T {
+        fn next(items: &mut Vec<T>) -> Option<T> {
             let num = thread_rng().gen_range(0..items.len());
-            items.remove(num)
+            // can panic!
+            Some(items.remove(num))
         }
     }
     #[cfg(test)]
-    mod test {
-
-        use super::*;
-        use crate::game::engine::Engine;
-        use rand::{thread_rng, Rng};
-
-        struct Linear;
-        impl<T> Strategy<T> for Linear {
-            fn next(items: &mut Vec<T>) -> T {
-                items.remove(0)
-            }
-        }
-
-        struct Random;
-        impl<T> Strategy<T> for Random {
-            fn next(items: &mut Vec<T>) -> T {
-                let num = thread_rng().gen_range(0..items.len());
-                items.remove(num)
-            }
-        }
-
-        #[test]
-        fn build_engine_linear() {
-            let items = vec![1, 2, 3];
-            let mut engine = Engine::new(items);
-
-            if let Some(next) = engine.next(&Linear) {
-                assert_eq!(next, 1);
-            }
-        }
-
-        #[test]
-        fn build_engine_random() {
-            let items = vec![1, 2];
-            let items_ref = items.clone();
-            let mut engine = Engine::new(items);
-            if let Some(next) = engine.next(&Random) {
-                assert!(items_ref.contains(&next))
-            }
-        }
-    }
+    mod test {}
 }
