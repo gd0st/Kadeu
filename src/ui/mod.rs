@@ -118,6 +118,7 @@ pub enum Exit {
     None,
 }
 
+// TODO Debugger needs to be reworked
 trait Debugger {
     fn text(&self) -> text::Text;
 }

@@ -43,7 +43,8 @@ fn main() -> io::Result<()> {
                 // makes a new browser if none exists
                 // otherwise uses whatever browser has already been produced
                 // prevents the UI from resetting to root after the user finishes browsing.
-                let mut instance_browser = browser.unwrap_or(DeckBrowser::from(imports_root));
+
+                let mut instance_browser = browser.unwrap_or(DeckBrowser::try_from(imports_root)?);
                 let _action = app.run(&mut instance_browser)?;
                 if let Exit::Quit = _action {
                     break;

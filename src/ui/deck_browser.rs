@@ -5,65 +5,60 @@ use ratatui::style::Stylize;
 use ratatui::text::Text;
 use ratatui::widgets::{Block, List, ListState};
 use ratatui::Terminal;
-use std::cmp::max;
+use std::ffi::OsString;
 use std::fs;
+use std::mem::swap;
 use std::path::PathBuf;
 
-use super::inputs::{EventListener, KeyMap};
-use super::{Debugger, Exit, KadeuApp};
+use super::inputs::KeyMap;
+use super::{Exit, KadeuApp};
 
 pub struct DeckBrowser {
-    parent: PathBuf,
     root: PathBuf,
-    collection: Collection,
+    relative_path: PathBuf,
+    collection: FileCollection,
     index: usize,
 }
 
-impl From<PathBuf> for DeckBrowser {
-    fn from(root: PathBuf) -> Self {
-        Self {
-            parent: root.clone(),
-            // temp
-            collection: Collection::default(),
+impl TryFrom<PathBuf> for DeckBrowser {
+    type Error = std::io::Error;
+    fn try_from(root: PathBuf) -> Result<Self, Self::Error> {
+        let collection = FileCollection::try_from(root.clone())?;
+        let browser = Self {
+            relative_path: PathBuf::new(),
             root,
+            collection,
             index: 0,
-        }
-    }
-}
-impl Debugger for DeckBrowser {
-    fn text(&self) -> ratatui::text::Text {
-        let err: String = if let Err(e) = self.view() {
-            e.to_string()
-        } else {
-            "OK!".to_string()
         };
-        let text = format!(
-            "deckbrowser:{},{},{} ",
-            self.index,
-            self.root.to_string_lossy(),
-            err
-        );
-        Text::from(text)
+
+        Ok(browser)
     }
 }
-
-#[derive(Default)]
-struct Collection {
+// this works?
+#[derive(Default, Debug, Clone)]
+struct FileCollection {
+    root: PathBuf,
     subpaths: Vec<PathBuf>,
     index: usize,
 }
 
-impl TryFrom<&PathBuf> for Collection {
+impl TryFrom<PathBuf> for FileCollection {
     type Error = std::io::Error;
-    fn try_from(root: &PathBuf) -> Result<Self, Self::Error> {
+    fn try_from(root: PathBuf) -> Result<Self, Self::Error> {
         let mut subpaths: Vec<PathBuf> = vec![];
 
-        for entry in fs::read_dir(root)? {
+        for entry in fs::read_dir(&root)? {
             let entry = entry?;
-            let filepath = entry.path();
+            if entry.path().file_name().is_some() {
+                subpaths.push(entry.path());
+            }
         }
 
-        Ok(Self { subpaths, index: 0 })
+        Ok(Self {
+            root,
+            subpaths,
+            index: 0,
+        })
 
         // TODO Present a view of the subpath
         // TODO Allow the cursor to move up and down.
@@ -72,28 +67,68 @@ impl TryFrom<&PathBuf> for Collection {
     }
 }
 
-impl Collection {
-    fn inc(mut self) -> Self {
-        if self.index < 1 {
-            self
-        } else {
+impl FileCollection {
+    fn inc(&mut self) {
+        if self.index > 0 {
             self.index -= 1;
-
-            self
         }
     }
 
-    fn dec(mut self) -> Self {
-        if self.index == self.subpaths.len() {
-            self
-        } else {
+    fn root(&self) -> &PathBuf {
+        &self.root
+    }
+
+    pub fn peek(&self) -> &PathBuf {
+        self.subpaths.get(self.index).unwrap()
+    }
+
+    pub fn index_filename(&self) -> OsString {
+        self.peek().file_name().unwrap().to_os_string()
+    }
+
+    fn dec(&mut self) {
+        if self.index < self.subpaths.len() - 1 {
             self.index += 1;
-            self
         }
     }
 
-    fn take(mut self) -> PathBuf {
-        self.subpaths.remove(self.index)
+    pub fn traverse(&mut self) -> std::io::Result<()> {
+        let path = self.peek().clone();
+
+        if path.is_dir() {
+            let mut collection = FileCollection::try_from(path)?;
+            // TODO for some reason traversing breaks everything..
+            swap(self, &mut collection);
+            self.index = 0;
+        }
+        Ok(())
+    }
+
+    pub fn reverse(&mut self) -> std::io::Result<()> {
+        if let Some(parent) = self.root().parent() {
+            let path = parent.to_path_buf();
+            let mut collection = FileCollection::try_from(path)?;
+            swap(self, &mut collection);
+        }
+
+        Ok(())
+    }
+
+    fn subpaths(&self) -> Vec<(String, &PathBuf)> {
+        self.subpaths
+            .iter()
+            .map(|path| {
+                let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                (filename, path)
+            })
+            .collect()
+    }
+    fn view(&self) -> Vec<String> {
+        // all subpaths are filtered to be some at this point.
+        self.subpaths
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
+            .collect()
     }
 }
 
@@ -104,34 +139,30 @@ impl KadeuApp for DeckBrowser {
         };
         let exit = match input {
             Input::Up => {
-                if self.index > 0 {
-                    self.index -= 1;
-                }
+                self.collection.inc();
                 Exit::None
             }
 
             Input::Down => {
-                if self.index < self.view().unwrap().len() - 1 {
-                    self.index += 1;
-                }
+                self.collection.dec();
                 Exit::None
             }
 
             Input::Backspace => {
-                if self.root == self.parent {
-                } else {
-                    if let Some(parent) = self.root.parent() {
-                        self.root = PathBuf::from(parent)
-                    }
+                if self.collection.root() != &self.root {
+                    self.relative_path.pop();
+                    self.collection.reverse()?;
                 }
                 Exit::None
             }
             Input::Select => {
-                if self.current_path_is_file() {
-                    Exit::Drop
-                } else {
-                    self.traverse()?;
+                // Somehow completley breaks rendering after this....
+                if self.collection.peek().is_dir() {
+                    self.relative_path.push(self.collection.index_filename());
+                    self.collection.traverse()?;
                     Exit::None
+                } else {
+                    Exit::Drop
                 }
             }
             _ => Exit::None,
@@ -140,21 +171,17 @@ impl KadeuApp for DeckBrowser {
         Ok(action)
     }
     fn render<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> std::io::Result<()> {
-        let view = self.view()?;
-
-        let _items = view.into_iter().map(|item| Text::from(item).white());
-        let items = self
-            .relative_view()?
-            .into_iter()
-            .map(|item| Text::from(item));
-        let block = Block::default().title("Deck Browser");
+        let view = self.collection.view();
+        let items = view.into_iter().map(|item| Text::from(item));
+        let title = self.relative_path.as_os_str().to_string_lossy().to_string();
+        let block = Block::default().title(title);
         let list = List::new(items)
             .on_black()
             .white()
             .highlight_symbol("> ")
             .block(block);
         let mut state = ListState::default();
-        state.select(Some(self.index));
+        state.select(Some(self.collection.index));
         terminal.draw(|frame| {
             frame.render_stateful_widget(list, frame.area(), &mut state);
         })?;
@@ -227,45 +254,19 @@ impl DeckBrowser {
         Ok(paths)
     }
 
-    fn relative_view(&self) -> std::io::Result<Vec<String>> {
-        let paths = self
-            .paths()?
+    // TODO just return stylized text instead
+    pub fn view(&self) -> Vec<String> {
+        self.collection
+            .subpaths()
             .iter()
-            .filter(|path| path.file_name().is_some())
-            .map(|path| {
-                let filename = path.file_name().unwrap();
+            .map(|(filename, path)| {
                 if path.is_dir() {
-                    format!("{} > ", filename.to_string_lossy().to_string())
+                    format!("{} >", filename)
                 } else {
-                    format!("{} ", filename.to_string_lossy().to_string())
+                    format!("{}", filename)
                 }
             })
-            .collect();
-
-        Ok(paths)
-    }
-    // TODO just return stylized text instead
-    pub fn view(&self) -> std::io::Result<Vec<String>> {
-        let paths = self
-            .paths()?
-            .iter()
-            .map(|path| {
-                format!(
-                    "{}{}",
-                    &path.to_string_lossy().to_string(),
-                    if path.is_dir() { ">" } else { "" }
-                )
-            })
-            .collect();
-        Ok(paths)
-    }
-
-    pub fn fullpath(&self) -> PathBuf {
-        let mut path = self.parent.clone();
-        if path != self.root {
-            path.push(self.root.clone());
-        }
-        path
+            .collect()
     }
 
     /// Will change it's state to browse the child folder
@@ -275,42 +276,9 @@ impl DeckBrowser {
         // TODO Fix this to not return an Action...
         // Actions will be done by handle_input instead. Bad code right now
         // still kinda a messy function
-        if let Some(path) = self.paths()?.into_iter().nth(self.index) {
-            if path.is_dir() {
-                self.root = path.clone();
-                self.index = 0;
-            }
-        }
+
+        if self.collection.peek().is_dir() {}
+
         Ok(())
-    }
-}
-
-impl EventListener for DeckBrowser {
-    fn on_event(&mut self, input: &Input) {
-        match input {
-            Input::Up => {
-                if self.index > 0 {
-                    self.index -= 1;
-                }
-            }
-
-            Input::Down => self.index = max(self.view().unwrap_or_default().len(), self.index + 1),
-            _ => {}
-        }
-    }
-}
-
-// ummm.... okay?
-impl<'a> Into<Option<(List<'a>, ListState)>> for &'a DeckBrowser {
-    fn into(self) -> Option<(List<'a>, ListState)> {
-        if let Ok(view) = self.view() {
-            let items = view.into_iter().map(|item| Text::from(item));
-            let mut state = ListState::default();
-            state.select(Some(self.index));
-            let list = List::new(items);
-            Some((list, state))
-        } else {
-            None
-        }
     }
 }
