@@ -1,22 +1,21 @@
-use crate::game::Kadeu;
 use crate::ui::inputs::Input;
 use crossterm::event::KeyCode;
-use ratatui::prelude::{Backend, CrosstermBackend};
+use ratatui::prelude::Backend;
 use ratatui::style::Stylize;
 use ratatui::text::Text;
-use ratatui::widgets::{Block, List, ListItem, ListState, StatefulWidgetRef};
+use ratatui::widgets::{Block, List, ListState};
 use ratatui::Terminal;
 use std::cmp::max;
 use std::fs;
-use std::io::Stdout;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use super::inputs::{EventListener, Events, KeyMap};
-use super::{Action, Debugger, KadeuApp};
+use super::inputs::{EventListener, KeyMap};
+use super::{Debugger, Exit, KadeuApp};
 
 pub struct DeckBrowser {
     parent: PathBuf,
     root: PathBuf,
+    collection: Collection,
     index: usize,
 }
 
@@ -24,6 +23,8 @@ impl From<PathBuf> for DeckBrowser {
     fn from(root: PathBuf) -> Self {
         Self {
             parent: root.clone(),
+            // temp
+            collection: Collection::default(),
             root,
             index: 0,
         }
@@ -46,52 +47,107 @@ impl Debugger for DeckBrowser {
     }
 }
 
+#[derive(Default)]
+struct Collection {
+    subpaths: Vec<PathBuf>,
+    index: usize,
+}
+
+impl TryFrom<&PathBuf> for Collection {
+    type Error = std::io::Error;
+    fn try_from(root: &PathBuf) -> Result<Self, Self::Error> {
+        let mut subpaths: Vec<PathBuf> = vec![];
+
+        for entry in fs::read_dir(root)? {
+            let entry = entry?;
+            let filepath = entry.path();
+        }
+
+        Ok(Self { subpaths, index: 0 })
+
+        // TODO Present a view of the subpath
+        // TODO Allow the cursor to move up and down.
+        // TODO Filter out hidden paths.
+        // TODO move into sub paths
+    }
+}
+
+impl Collection {
+    fn inc(mut self) -> Self {
+        if self.index < 1 {
+            self
+        } else {
+            self.index -= 1;
+
+            self
+        }
+    }
+
+    fn dec(mut self) -> Self {
+        if self.index == self.subpaths.len() {
+            self
+        } else {
+            self.index += 1;
+            self
+        }
+    }
+
+    fn take(mut self) -> PathBuf {
+        self.subpaths.remove(self.index)
+    }
+}
+
 impl KadeuApp for DeckBrowser {
-    fn handle_input(&mut self, input: Option<&Input>) -> std::io::Result<Action> {
+    fn handle_input(&mut self, input: Option<&Input>) -> std::io::Result<Exit> {
         let Some(input) = input else {
-            return Ok(Action::None);
+            return Ok(Exit::None);
         };
-        let action = match input {
+        let exit = match input {
             Input::Up => {
                 if self.index > 0 {
                     self.index -= 1;
                 }
-                Action::None
+                Exit::None
             }
 
             Input::Down => {
                 if self.index < self.view().unwrap().len() - 1 {
                     self.index += 1;
                 }
-                Action::None
+                Exit::None
             }
 
-            Input::Escape => {
+            Input::Backspace => {
                 if self.root == self.parent {
                 } else {
                     if let Some(parent) = self.root.parent() {
                         self.root = PathBuf::from(parent)
                     }
                 }
-                Action::Quit
+                Exit::None
             }
             Input::Select => {
                 if self.current_path_is_file() {
-                    Action::Exit
+                    Exit::Drop
                 } else {
                     self.traverse()?;
-                    Action::None
+                    Exit::None
                 }
             }
-            _ => Action::Continue,
+            _ => Exit::None,
         };
+        let action = exit;
         Ok(action)
     }
     fn render<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> std::io::Result<()> {
         let view = self.view()?;
 
-        let items = view.into_iter().map(|item| Text::from(item).white());
-        let block = Block::default().title(self.fullpath().to_string_lossy().to_string());
+        let _items = view.into_iter().map(|item| Text::from(item).white());
+        let items = self
+            .relative_view()?
+            .into_iter()
+            .map(|item| Text::from(item));
+        let block = Block::default().title("Deck Browser");
         let list = List::new(items)
             .on_black()
             .white()
@@ -111,7 +167,7 @@ impl KadeuApp for DeckBrowser {
         map.insert(KeyCode::Char('j'), Input::Down);
         map.insert(KeyCode::Char('k'), Input::Up);
         map.insert(KeyCode::Enter, Input::Select);
-        map.insert(KeyCode::Backspace, Input::Escape);
+        map.insert(KeyCode::Backspace, Input::Backspace);
         map
     }
 
@@ -121,7 +177,6 @@ impl KadeuApp for DeckBrowser {
 }
 
 impl DeckBrowser {
-    pub fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) {}
     pub fn index(&self) -> usize {
         self.index
     }
@@ -169,6 +224,24 @@ impl DeckBrowser {
                 paths.push(path);
             }
         }
+        Ok(paths)
+    }
+
+    fn relative_view(&self) -> std::io::Result<Vec<String>> {
+        let paths = self
+            .paths()?
+            .iter()
+            .filter(|path| path.file_name().is_some())
+            .map(|path| {
+                let filename = path.file_name().unwrap();
+                if path.is_dir() {
+                    format!("{} > ", filename.to_string_lossy().to_string())
+                } else {
+                    format!("{} ", filename.to_string_lossy().to_string())
+                }
+            })
+            .collect();
+
         Ok(paths)
     }
     // TODO just return stylized text instead

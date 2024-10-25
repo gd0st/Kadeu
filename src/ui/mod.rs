@@ -14,11 +14,18 @@ use ratatui::{
 };
 
 pub trait KadeuApp {
-    fn handle_input(&mut self, input: Option<&Input>) -> std::io::Result<Action>;
+    fn handle_input(&mut self, input: Option<&Input>) -> std::io::Result<Exit>;
     fn render<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> std::io::Result<()>;
     // Allow for the app to cleanup anything before the end of it's lifecycle.
     fn drop(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+
+    /// Enables the universal keymap for a given application.
+    /// This can be useful if you don't want the main app runner
+    /// To perform a universal action such as quitting.
+    fn disable_universal_keymap(&self) -> bool {
+        false
     }
     fn keymap(&self) -> KeyMap {
         [(KeyCode::Char('q'), Input::Quit)].into()
@@ -34,6 +41,31 @@ where
     tick: u64,
 }
 
+pub fn run<B: Backend>(
+    terminal: &mut Terminal<B>,
+    app: &mut impl KadeuApp,
+    events: Events,
+    tickrate: u64,
+) -> std::io::Result<Exit> {
+    loop {
+        let input = events.poll(tickrate)?;
+
+        if !app.disable_universal_keymap() {
+            if let Some(Input::Quit) = input {
+                return Ok(Exit::Quit);
+            }
+        }
+
+        let action = app.handle_input(input)?;
+
+        if let Exit::None = action {
+            app.render(terminal)?;
+        } else {
+            return Ok(action);
+        }
+    }
+}
+
 impl<B> AppHandler<B>
 where
     B: Backend,
@@ -42,17 +74,20 @@ where
         self.events = Events::from(keymap)
     }
 
-    pub fn run(&mut self, app: &mut impl KadeuApp) -> std::io::Result<Action> {
+    pub fn run(&mut self, app: &mut impl KadeuApp) -> std::io::Result<Exit> {
         self.events = Events::from(app.keymap());
         loop {
             let input = self.events.poll(self.tick)?;
 
-            if let Some(Input::Quit) = input {
-                return Ok(Action::Quit);
+            if !app.disable_universal_keymap() {
+                if let Some(Input::Quit) = input {
+                    return Ok(Exit::Quit);
+                }
             }
+
             let action = app.handle_input(input)?;
 
-            if let Action::None = action {
+            if let Exit::None = action {
                 app.render(&mut self.terminal)?;
             } else {
                 return Ok(action);
@@ -74,12 +109,12 @@ where
     }
 }
 
-// These are actually instructions, not actions lol
-pub enum Action {
-    Exit,
-    Load(PathBuf),
+/// Communicates to the run function if the app would like to exit
+/// and if so in what state it would like to exit (drop and allow the main app to handle the next step?).
+/// None is used to communicate that nothing should be done and the next frame can be rendered.
+pub enum Exit {
+    Drop,
     Quit,
-    Continue,
     None,
 }
 

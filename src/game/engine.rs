@@ -1,9 +1,5 @@
-use ratatui::{
-    text::Text,
-    widgets::{Paragraph, Widget, WidgetRef},
-};
-
-use super::{Kadeu, Progress, Score};
+use super::Kadeu;
+use ratatui::text::Text;
 use std::{collections::VecDeque, fmt::Display};
 
 type StrategyFunction<T> = fn(&mut VecDeque<T>) -> Option<T>;
@@ -12,7 +8,29 @@ mod strategies {
     use rand::{thread_rng, Rng};
     use std::collections::VecDeque;
 
-    enum Strategy {
+    pub trait Strat<T> {
+        fn next(items: &mut VecDeque<T>) -> Option<T>;
+        fn sequence(&self, items: &mut VecDeque<T>) -> impl Iterator<Item = T>;
+    }
+
+    //init Random generator
+    //allow a seed to be set
+    pub struct Random {
+        seed: usize,
+    }
+
+    impl<T> Strat<T> for Random {
+        fn next(items: &mut VecDeque<T>) -> Option<T> {
+            let mut rng = thread_rng();
+            None
+        }
+
+        fn sequence(&self, items: &mut VecDeque<T>) -> impl Iterator<Item = T> {
+            vec![].into_iter()
+        }
+    }
+
+    pub enum Strategy {
         Linear,
         Random,
     }
@@ -62,14 +80,8 @@ impl<T> Pin<T> {
     fn unpin(&mut self) {
         self.pinned = false;
     }
-    fn get_ref(&self) -> &T {
-        &self.item
-    }
     fn get_mut(&mut self) -> &mut T {
         &mut self.item
-    }
-    fn pin(&mut self) {
-        self.pinned = true;
     }
 }
 
@@ -107,7 +119,7 @@ impl<T> Engine<T> {
         }
     }
 
-    pub fn current(&self) -> Option<&Pin<T>> {
+    fn current(&self) -> Option<&Pin<T>> {
         if let Some(item) = &self.current {
             Some(item)
         } else {
@@ -133,13 +145,10 @@ impl<T> Engine<T> {
 }
 
 pub mod ui {
-    use std::{collections::VecDeque, fmt::Display, pin::Pin};
+    use std::{collections::VecDeque, fmt::Display};
 
     use crossterm::event::KeyCode;
-    use ratatui::{
-        text::Text,
-        widgets::{Block, Paragraph, Widget},
-    };
+    use ratatui::{text::Text, widgets::Block};
 
     use super::{strategies, Engine};
     use crate::{
@@ -148,7 +157,7 @@ pub mod ui {
         ui::{
             center,
             inputs::{Input, KeyMap},
-            Action, KadeuApp,
+            Exit, KadeuApp,
         },
     };
 
@@ -156,7 +165,6 @@ pub mod ui {
         show_title: bool,
         show_end: bool,
         engine: Engine<T>,
-        discard: Vec<T>,
         title: String,
     }
 
@@ -165,7 +173,6 @@ pub mod ui {
             Self {
                 show_title: true,
                 show_end: false,
-                discard: vec![],
                 title: deck.title().to_string(),
                 // TODO figure out where this strategy is sourced from??
                 engine: Engine::new(VecDeque::from(deck.into_cards()), strategies::linear),
@@ -181,8 +188,9 @@ pub mod ui {
     {
         fn keymap(&self) -> KeyMap {
             let mut keymap = KeyMap::new();
-            keymap.insert(KeyCode::Char('q'), Input::Quit);
+            keymap.insert(KeyCode::Char('q'), Input::Escape);
             keymap.insert(KeyCode::Enter, Input::Continue);
+            keymap.insert(KeyCode::Esc, Input::Escape);
             keymap
         }
         fn render<B: ratatui::prelude::Backend>(
@@ -225,7 +233,7 @@ pub mod ui {
 
             Ok(())
         }
-        fn handle_input(&mut self, input: Option<&Input>) -> std::io::Result<Action> {
+        fn handle_input(&mut self, input: Option<&Input>) -> std::io::Result<Exit> {
             if let Some(Input::Continue) = input {
                 match self.engine.current() {
                     Some(current) => {
@@ -248,14 +256,14 @@ pub mod ui {
                 }
             }
 
-            if let Some(Input::Quit) = input {
-                return Ok(Action::Exit);
+            if let Some(Input::Escape) = input {
+                return Ok(Exit::Drop);
             }
-            Ok(Action::None)
+
+            if let Some(Input::Quit) = input {
+                return Ok(Exit::Quit);
+            }
+            Ok(Exit::None)
         }
     }
-
-    // impl KadeuApp for FlashcardApp<T> {
-
-    // }
 }

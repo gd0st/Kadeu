@@ -7,7 +7,7 @@ use kadeu::game::flashcard;
 use kadeu::io::{convert_to_path, list_directory, FileType, ImportEntry};
 // use kadeu::tui::{App, Card};
 use kadeu::ui::deck_browser::DeckBrowser;
-use kadeu::ui::{Action, AppHandler};
+use kadeu::ui::{AppHandler, Exit};
 use kadeu::Flashcard;
 use ratatui::prelude::CrosstermBackend;
 use ratatui::Terminal;
@@ -27,7 +27,6 @@ fn crossterm_terminal() -> std::io::Result<Terminal<CrosstermBackend<Stdout>>> {
 }
 
 fn main() -> io::Result<()> {
-    // [X] TODO load the config here.
     let args = cli::Args::parse();
     let mut subcommand = args.subcommand.clone().unwrap_or_default();
     let mut browser = None;
@@ -46,7 +45,7 @@ fn main() -> io::Result<()> {
                 // prevents the UI from resetting to root after the user finishes browsing.
                 let mut instance_browser = browser.unwrap_or(DeckBrowser::from(imports_root));
                 let _action = app.run(&mut instance_browser)?;
-                if let Action::Quit = _action {
+                if let Exit::Quit = _action {
                     break;
                 }
 
@@ -67,16 +66,7 @@ fn main() -> io::Result<()> {
                     filepath.push(path);
                 });
                 filepath.set_extension("json");
-
-                let deck: Deck<Flashcard> = FileType::json(&filepath).load()?;
-                let terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
-
-                let mut flashcard_app = FlashcardApp::from(deck);
-                let mut app = AppHandler::from(terminal);
-                // TODO this needs to change somehow
-                let _action = app.run(&mut flashcard_app);
-                //let mut app = App::new().load(&filepath)?;
-                // if args.debug { app.with_debugger() } else { app }.run()?;
+                subcommand = Subcommand::Source { path: filepath };
             }
             Subcommand::Source { path } => {
                 // TODO error handling
@@ -84,11 +74,11 @@ fn main() -> io::Result<()> {
                 let mut flashcard_app = FlashcardApp::from(deck);
                 let action = app.run(&mut flashcard_app)?;
 
-                if let Action::Quit = action {
+                if let Exit::Quit = action {
                     break;
                 }
 
-                if let Action::Exit = action {
+                if let Exit::Drop = action {
                     subcommand = Subcommand::Browse
                 }
             }
@@ -109,8 +99,6 @@ fn main() -> io::Result<()> {
                     FileType::json(&import_path),
                 )?;
                 // TODO some sort of file detection here.
-
-                // TODO Card here is from tui. Need to rework the card system a bit.
             }
 
             Subcommand::Show => {

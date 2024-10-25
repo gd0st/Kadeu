@@ -8,6 +8,7 @@ use super::Debugger;
 pub enum Input {
     Up,
     Down,
+    Backspace,
     Continue,
     Select,
     Escape,
@@ -58,8 +59,6 @@ impl Events {
 pub trait EventListener {
     fn on_event(&mut self, input: &Input);
 }
-
-struct Eventer {}
 
 mod tests {
 
