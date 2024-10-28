@@ -1,3 +1,6 @@
+use crate::app::{Card, Deck};
+use crate::game::Kadeu;
+use crate::io::FileType;
 use crate::ui::inputs::Input;
 use crossterm::event::KeyCode;
 use ratatui::prelude::Backend;
@@ -5,6 +8,7 @@ use ratatui::style::Color;
 use ratatui::text::Text;
 use ratatui::widgets::ListState;
 use ratatui::Terminal;
+use serde::de::DeserializeOwned;
 use std::ffi::OsString;
 use std::fs;
 use std::mem::swap;
@@ -26,7 +30,7 @@ impl TryFrom<PathBuf> for DeckBrowser {
     fn try_from(root: PathBuf) -> Result<Self, Self::Error> {
         let collection = FileCollection::try_from(root.clone())?;
         let browser = Self {
-            relative_path: PathBuf::new(),
+            relative_path: PathBuf::from("/"),
             root,
             collection,
             index: 0,
@@ -199,5 +203,22 @@ impl DeckBrowser {
 
     pub fn current_path(&self) -> PathBuf {
         self.collection.peek_index().clone()
+    }
+    pub fn is_deck<T: Kadeu + DeserializeOwned>(&self) -> bool {
+        let file = self.collection.peek_index();
+
+        if file.is_dir() {
+            return false;
+        }
+
+        let trials = [FileType::Json(file.clone())];
+
+        for trial in trials {
+            if trial.load::<Deck<T>>().is_ok() {
+                return true;
+            }
+        }
+
+        false
     }
 }

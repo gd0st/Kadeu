@@ -157,6 +157,7 @@ pub mod ui {
         ui::{
             center,
             inputs::{Input, KeyMap},
+            style::AppStyle,
             Exit, KadeuApp,
         },
     };
@@ -196,6 +197,7 @@ pub mod ui {
         fn render<B: ratatui::prelude::Backend>(
             &mut self,
             terminal: &mut ratatui::Terminal<B>,
+            _: &AppStyle,
         ) -> std::io::Result<()> {
             if self.show_title {
                 let text = Text::from(self.title.to_string());
@@ -213,7 +215,6 @@ pub mod ui {
             }
 
             let Some(item) = self.engine.current() else {
-                println!("here!");
                 // Draw End Splash
                 return Ok(());
             };

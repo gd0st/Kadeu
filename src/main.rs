@@ -3,7 +3,6 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use kadeu::app::Deck;
 use kadeu::cli::{self, Subcommand};
 use kadeu::game::engine::ui::FlashcardApp;
-use kadeu::game::flashcard;
 use kadeu::io::{convert_to_path, list_directory, FileType, ImportEntry};
 // use kadeu::tui::{App, Card};
 use kadeu::ui::deck_browser::DeckBrowser;
@@ -29,8 +28,10 @@ fn crossterm_terminal() -> std::io::Result<Terminal<CrosstermBackend<Stdout>>> {
 fn main() -> io::Result<()> {
     let args = cli::Args::parse();
     let mut subcommand = args.subcommand.clone().unwrap_or_default();
-    let mut browser = None;
+
+    //let mut browser = None;
     let config = args.read_config()?;
+    let mut browser = DeckBrowser::try_from(config.import_directory())?;
     enable_raw_mode()?;
     let terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     let mut app = AppHandler::from(terminal);
@@ -38,31 +39,22 @@ fn main() -> io::Result<()> {
     loop {
         match &subcommand {
             Subcommand::Browse => {
-                let imports_root = config.import_directory();
-
                 // makes a new browser if none exists
                 // otherwise uses whatever browser has already been produced
                 // prevents the UI from resetting to root after the user finishes browsing.
 
-                let mut instance_browser = browser.unwrap_or(DeckBrowser::try_from(imports_root)?);
-                let _action = app.run(&mut instance_browser)?;
+                let _action = app.run(&mut browser)?;
                 if let Exit::Quit = _action {
                     break;
                 }
 
-                if instance_browser.current_path_is_file() {
-                    let Some(path) = instance_browser.current_path() else {
-                        disable_raw_mode()?;
-                        panic!("you are not supposed to be here!")
-                    };
+                if browser.is_deck::<Flashcard>() {
+                    let path = browser.current_path();
                     subcommand = Subcommand::Source { path }
                 }
-                browser = Some(instance_browser);
             }
             Subcommand::Run { name } => {
                 let mut filepath = config.import_directory();
-
-                let ifs = "/";
                 name.split(IFS).for_each(|path| {
                     filepath.push(path);
                 });
@@ -70,7 +62,6 @@ fn main() -> io::Result<()> {
                 subcommand = Subcommand::Source { path: filepath };
             }
             Subcommand::Source { path } => {
-                // TODO error handling
                 let deck: Deck<Flashcard> = FileType::json(&path).load()?;
                 let mut flashcard_app = FlashcardApp::from(deck);
                 let action = app.run(&mut flashcard_app)?;
