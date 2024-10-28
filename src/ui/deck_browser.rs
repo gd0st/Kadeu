@@ -1,9 +1,9 @@
 use crate::ui::inputs::Input;
 use crossterm::event::KeyCode;
 use ratatui::prelude::Backend;
-use ratatui::style::Stylize;
+use ratatui::style::Color;
 use ratatui::text::Text;
-use ratatui::widgets::{Block, List, ListState};
+use ratatui::widgets::ListState;
 use ratatui::Terminal;
 use std::ffi::OsString;
 use std::fs;
@@ -11,6 +11,7 @@ use std::mem::swap;
 use std::path::PathBuf;
 
 use super::inputs::KeyMap;
+use super::style::AppStyle;
 use super::{Exit, KadeuApp};
 
 pub struct DeckBrowser {
@@ -59,11 +60,6 @@ impl TryFrom<PathBuf> for FileCollection {
             subpaths,
             index: 0,
         })
-
-        // TODO Present a view of the subpath
-        // TODO Allow the cursor to move up and down.
-        // TODO Filter out hidden paths.
-        // TODO move into sub paths
     }
 }
 
@@ -78,12 +74,12 @@ impl FileCollection {
         &self.root
     }
 
-    pub fn peek(&self) -> &PathBuf {
+    pub fn peek_index(&self) -> &PathBuf {
         self.subpaths.get(self.index).unwrap()
     }
 
     pub fn index_filename(&self) -> OsString {
-        self.peek().file_name().unwrap().to_os_string()
+        self.peek_index().file_name().unwrap().to_os_string()
     }
 
     fn dec(&mut self) {
@@ -93,11 +89,9 @@ impl FileCollection {
     }
 
     pub fn traverse(&mut self) -> std::io::Result<()> {
-        let path = self.peek().clone();
-
+        let path = self.peek_index().clone();
         if path.is_dir() {
             let mut collection = FileCollection::try_from(path)?;
-            // TODO for some reason traversing breaks everything..
             swap(self, &mut collection);
             self.index = 0;
         }
@@ -114,15 +108,6 @@ impl FileCollection {
         Ok(())
     }
 
-    fn subpaths(&self) -> Vec<(String, &PathBuf)> {
-        self.subpaths
-            .iter()
-            .map(|path| {
-                let filename = path.file_name().unwrap().to_string_lossy().to_string();
-                (filename, path)
-            })
-            .collect()
-    }
     fn view(&self) -> Vec<String> {
         // all subpaths are filtered to be some at this point.
         self.subpaths
@@ -156,8 +141,7 @@ impl KadeuApp for DeckBrowser {
                 Exit::None
             }
             Input::Select => {
-                // Somehow completley breaks rendering after this....
-                if self.collection.peek().is_dir() {
+                if self.collection.peek_index().is_dir() {
                     self.relative_path.push(self.collection.index_filename());
                     self.collection.traverse()?;
                     Exit::None
@@ -170,22 +154,27 @@ impl KadeuApp for DeckBrowser {
         let action = exit;
         Ok(action)
     }
-    fn render<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> std::io::Result<()> {
+    fn render<B: Backend>(
+        &mut self,
+        terminal: &mut Terminal<B>,
+        style: &AppStyle,
+    ) -> std::io::Result<()> {
         let view = self.collection.view();
         let items = view.into_iter().map(|item| Text::from(item));
         let title = self.relative_path.as_os_str().to_string_lossy().to_string();
-        let block = Block::default().title(title);
-        let list = List::new(items)
-            .on_black()
-            .white()
+        let list = style
+            .list(items)
             .highlight_symbol("> ")
-            .block(block);
+            .block(style.block().title(title));
         let mut state = ListState::default();
         state.select(Some(self.collection.index));
         terminal.draw(|frame| {
             frame.render_stateful_widget(list, frame.area(), &mut state);
         })?;
         Ok(())
+    }
+    fn style(&self) -> AppStyle {
+        AppStyle::default().bg(Color::White)
     }
 
     fn keymap(&self) -> KeyMap {
@@ -204,81 +193,11 @@ impl KadeuApp for DeckBrowser {
 }
 
 impl DeckBrowser {
-    pub fn index(&self) -> usize {
-        self.index
-    }
-
     pub fn current_path_is_file(&self) -> bool {
-        let Ok(paths) = self.paths() else {
-            return false;
-        };
-
-        if paths.len() < 1 {
-            return false;
-        }
-        let Some(path) = paths.get(self.index) else {
-            panic!("the index is out of range")
-        };
-
-        !path.is_dir()
+        self.collection.peek_index().is_file()
     }
 
-    pub fn current_path(&self) -> Option<PathBuf> {
-        let Ok(paths) = self.paths() else {
-            return None;
-        };
-
-        if paths.len() < 1 {
-            return None;
-        }
-        let Some(path) = paths.get(self.index) else {
-            panic!("the index is out of range")
-        };
-
-        Some(path.to_owned())
-    }
-
-    pub fn paths(&self) -> std::io::Result<Vec<PathBuf>> {
-        let mut paths = vec![];
-        for entry in fs::read_dir(&self.root)? {
-            let entry = entry?;
-            let path = entry.path();
-            let Some(filename) = path.file_name() else {
-                continue;
-            };
-
-            if !filename.to_string_lossy().starts_with(".") {
-                paths.push(path);
-            }
-        }
-        Ok(paths)
-    }
-
-    // TODO just return stylized text instead
-    pub fn view(&self) -> Vec<String> {
-        self.collection
-            .subpaths()
-            .iter()
-            .map(|(filename, path)| {
-                if path.is_dir() {
-                    format!("{} >", filename)
-                } else {
-                    format!("{}", filename)
-                }
-            })
-            .collect()
-    }
-
-    /// Will change it's state to browse the child folder
-    /// if the self.index is discovered to be on a path
-    /// otherwise nothing happens
-    pub fn traverse(&mut self) -> std::io::Result<()> {
-        // TODO Fix this to not return an Action...
-        // Actions will be done by handle_input instead. Bad code right now
-        // still kinda a messy function
-
-        if self.collection.peek().is_dir() {}
-
-        Ok(())
+    pub fn current_path(&self) -> PathBuf {
+        self.collection.peek_index().clone()
     }
 }

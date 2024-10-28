@@ -1,5 +1,6 @@
 pub mod deck_browser;
 pub mod inputs;
+pub mod style;
 use std::path::PathBuf;
 
 use crossterm::event::KeyCode;
@@ -12,13 +13,22 @@ use ratatui::{
     widgets::{Block, Paragraph, Widget, WidgetRef},
     Terminal,
 };
+use style::AppStyle;
 
 pub trait KadeuApp {
     fn handle_input(&mut self, input: Option<&Input>) -> std::io::Result<Exit>;
-    fn render<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> std::io::Result<()>;
+    fn render<B: Backend>(
+        &mut self,
+        terminal: &mut Terminal<B>,
+        style: &style::AppStyle,
+    ) -> std::io::Result<()>;
     // Allow for the app to cleanup anything before the end of it's lifecycle.
     fn drop(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+
+    fn style(&self) -> AppStyle {
+        AppStyle::default()
     }
 
     /// Enables the universal keymap for a given application.
@@ -41,12 +51,13 @@ where
     tick: u64,
 }
 
-pub fn run<B: Backend>(
+pub fn run<B: Backend, K: KadeuApp>(
     terminal: &mut Terminal<B>,
-    app: &mut impl KadeuApp,
+    app: &mut K,
     events: Events,
     tickrate: u64,
 ) -> std::io::Result<Exit> {
+    let style = app.style();
     loop {
         let input = events.poll(tickrate)?;
 
@@ -59,7 +70,7 @@ pub fn run<B: Backend>(
         let action = app.handle_input(input)?;
 
         if let Exit::None = action {
-            app.render(terminal)?;
+            app.render(terminal, &style)?;
         } else {
             return Ok(action);
         }
@@ -76,6 +87,7 @@ where
 
     pub fn run(&mut self, app: &mut impl KadeuApp) -> std::io::Result<Exit> {
         self.events = Events::from(app.keymap());
+        let style = AppStyle::default();
         loop {
             let input = self.events.poll(self.tick)?;
 
@@ -88,7 +100,7 @@ where
             let action = app.handle_input(input)?;
 
             if let Exit::None = action {
-                app.render(&mut self.terminal)?;
+                app.render(&mut self.terminal, &style)?;
             } else {
                 return Ok(action);
             }
@@ -158,85 +170,6 @@ impl CardSide {
 
     pub fn is_revealed(&self) -> bool {
         self.revealed
-    }
-}
-
-impl Widget for CardSide {
-    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
-    where
-        Self: Sized,
-    {
-        let content = if self.is_revealed() {
-            self.back
-        } else {
-            self.front
-        };
-        let mut text = Text::new(&content).bordered(&[]).centered();
-        if let Some(title) = self.deck_title.as_ref() {
-            text = text.with_border_title(title);
-        }
-        text.render(area, buf)
-    }
-}
-
-impl Widget for Text {
-    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer)
-    where
-        Self: Sized,
-    {
-        let text = text::Text::from(self.text);
-        let center_area = if self.centered {
-            center(
-                area,
-                Constraint::Length(text.width() as u16),
-                Constraint::Length(1),
-            )
-        } else {
-            area
-        };
-        text.render_ref(center_area, buf);
-
-        if self.bordered {
-            let block = if let Some(title) = &self.border_title {
-                Block::bordered().title(title.to_string())
-            } else {
-                Block::bordered()
-            };
-
-            block.render_ref(area, buf);
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct Text {
-    text: String,
-    centered: bool,
-    bordered: bool,
-    border_title: Option<String>,
-    border_styles: Vec<String>,
-}
-
-impl Text {
-    pub fn new(text: &str) -> Self {
-        let mut this = Self::default();
-        this.text = text.to_string();
-        this
-    }
-    pub fn centered(mut self) -> Self {
-        self.centered = true;
-        self
-    }
-
-    pub fn with_border_title(mut self, title: &str) -> Self {
-        self.border_title = Some(title.to_string());
-        self
-    }
-
-    pub fn bordered(mut self, styles: &[String]) -> Self {
-        self.bordered = true;
-        self.border_styles = Vec::from(styles);
-        self
     }
 }
 
